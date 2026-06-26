@@ -118,7 +118,7 @@ const callGemini = async (apiKey, systemPrompt, messages, jsonMode = false) => {
     system_instruction: { parts: [{ text: systemPrompt }] },
     contents,
     generationConfig: {
-      maxOutputTokens: jsonMode ? 800 : 400,
+      maxOutputTokens: jsonMode ? 1200 : 600,
       temperature: jsonMode ? 0.1 : 0.7,
       ...(jsonMode ? { responseMimeType: "application/json" } : {}),
     },
