@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MICHISHIRUBE — 道しるべ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+    body { font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic Pro', sans-serif; background: #16161a; -webkit-text-size-adjust: 100%; }
+    @keyframes glow { 0%,80%,100%{opacity:0.2;transform:scale(1)} 40%{opacity:1;transform:scale(1.3)} }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #32323c; border-radius: 2px; }
+    textarea, input { -webkit-appearance: none; appearance: none; }
+    textarea::placeholder, input::placeholder { color: #44444f; }
+    button { -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+const T = {
+  bg:        "#16161a",
+  surface:   "#1e1e24",
+  surfaceHi: "#26262e",
+  border:    "#32323c",
+  borderSub: "#28282f",
+  gold:      "#c9a96e",
+  goldDim:   "#8a6f42",
+  goldGlow:  "rgba(201,169,110,0.12)",
+  goldGlowS: "rgba(201,169,110,0.06)",
+  text:      "#ede9e0",
+  textSub:   "#9a9aaa",
+  textMuted: "#56565f",
+  champagne: "#f5e6c8",
+};
+
+const CATEGORIES = [
+  { id:"acquisition", label:"集客", icon:"集", sub:[
+    { id:"visitor_low",   label:"来場数が伸びない" },
+    { id:"media_effect",  label:"媒体効果がわからない" },
+    { id:"area_strategy", label:"商圏・エリア戦略を見直したい" },
+    { id:"event",         label:"イベント・催事の企画" },
+  ]},
+  { id:"conversion", label:"成約", icon:"約", sub:[
+    { id:"closing_low", label:"契約率が上がらない" },
+    { id:"revisit",     label:"再商談が取れない" },
+    { id:"pricing",     label:"価格・値引き判断に迷っている" },
+    { id:"objection",   label:"競合に負けるケースが多い" },
+  ]},
+  { id:"positioning", label:"競合・ポジショニング", icon:"戦", sub:[
+    { id:"competitive_map",  label:"競合との比較整理" },
+    { id:"usp",              label:"自物件のUSPが明確でない" },
+    { id:"market_position",  label:"市場での立ち位置を整理したい" },
+  ]},
+  { id:"team", label:"チーム・育成", icon:"育", sub:[
+    { id:"member_growth", label:"メンバーのスキルが伸びない" },
+    { id:"motivation",    label:"チームのモチベーション管理" },
+    { id:"process",       label:"営業プロセスの標準化" },
+  ]},
+];
+
+const buildSystem = (cat, sub, doc, userName) => {
+  const isTeam = cat?.id === "team";
+  const hasDoc = doc?.trim().length > 0;
+  const callName = userName?.trim() ? userName.trim() + "さん" : "あなた";
+  return `あなたはマンション新築分譲の販売事務所スタッフが自分の思考を整理するための対話エージェントです。
+
+## 絶対ルール
+- 答えを絶対に出さない。相手が自分の言葉で答えにたどり着くことがゴール。
+- 問いかけは1回につき1問のみ。
+- 相手が煮詰まったと感じたら選択肢を2〜4個提示して思考をサポートする（選択肢は答えではなく視点の切り口）。
+- 相手が自分の答えを宣言したら「では一度、考えを整理してみますか？」と確認する。
+- 整理出力の指示を受けたら以下のJSON形式のみで返す（前後に文章を付けない）：
+{"type":"summary","data":{"situation":"","issues":[""],"causes":[""],"solutions":[""],"rationale":"","positioning":"${isTeam ? "" : "市場での競合優位ポジションをここに記述"}"}}
+- teamテーマではpositioningは空文字にする。
+
+## 話しかけ方
+- 相手の名前は「${callName}」。会話の中で自然なタイミングで名前を使う（毎回使わなくてよい）。
+- 丁寧だが距離感のある敬語ではなく、対話しやすい自然なトーンで話す。
+
+## 対話スタイル
+- 返答は簡潔に。1〜3文の問いかけを基本とする。
+- ソクラテス式（なぜ？を繰り返す）とコーチング式（状況→課題→原因→解決策の段階整理）を使い分ける。
+- 表面的な答えに留まらせない。「それは本当の原因でしょうか？」と掘り下げる。
+- teamテーマ以外では、まず市場・競合の把握状況を確認してから深掘りに入る。
+${!isTeam ? `
+## 集客・成約テーマのゴール
+相手が以下を自分の言葉で語れる状態にする：
+現状把握→課題→原因→解決策→根拠→競合優位ポジショニング（USP）
+USPはスペック訴求（駐車場100%等）ではなく、エリア・タイミング固有の「なぜうちで買うのか」の根拠まで磨く。` : ""}
+${hasDoc ? `\n## 参照資料\n${doc}` : "## 参照資料\nなし。対話の中から情報を引き出しながら進める。"}
+
+## 今日のテーマ
+${cat?.label} ／ ${sub?.label}
+
+セッション開始時は${userName?.trim() ? `「${userName.trim()}さん、今日は〈${sub?.label}〉について一緒に考えていきましょう。」` : `「今日は〈${sub?.label}〉について一緒に考えていきましょう。」`}と一言添えてから、現状を把握する問いを1つだけ投げる。`;
+};
+
+const GEMINI_URL = (key) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+
+const callGemini = async (apiKey, systemPrompt, messages, jsonMode = false) => {
+  const contents = messages.map(m => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+  const body = {
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents,
+    generationConfig: {
+      maxOutputTokens: jsonMode ? 800 : 400,
+      temperature: jsonMode ? 0.1 : 0.7,
+      ...(jsonMode ? { responseMimeType: "application/json" } : {}),
+    },
+  };
+  const res = await fetch(GEMINI_URL(apiKey), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "応答を取得できませんでした。";
+};
+
+const extractJSON = (text) => {
+  // Markdownコードブロックを除去してからパース
+  const cleaned = text
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+  // 直接パース試行
+  try { return JSON.parse(cleaned); } catch {}
+  // { } の範囲を探してパース
+  const m = cleaned.match(/(\{[\s\S]*\})/);
+  if (m) { try { return JSON.parse(m[1]); } catch {} }
+  return null;
+};
+
+const RichText = ({ text, color }) => (
+  <div style={{ fontSize:"14px", lineHeight:"1.85", color: color || T.text }}>
+    {text.split("\n").map((line, i) => {
+      if (!line.trim()) return <div key={i} style={{ height:"5px" }} />;
+      const parts = line.split(/(\*\*.*?\*\*)/);
+      return (
+        <p key={i} style={{ margin:"2px 0" }}>
+          {parts.map((p, j) =>
+            p.startsWith("**")
+              ? <strong key={j} style={{ color: T.gold, fontWeight:"600" }}>{p.replace(/\*\*/g,"")}</strong>
+              : p
+          )}
+        </p>
+      );
+    })}
+  </div>
+);
+
+const GoldDivider = () => (
+  <div style={{ display:"flex", alignItems:"center", gap:"12px", margin:"20px 0" }}>
+    <div style={{ flex:1, height:"1px", background:`linear-gradient(to right, transparent, ${T.border})` }} />
+    <div style={{ width:"4px", height:"4px", background:T.goldDim, transform:"rotate(45deg)" }} />
+    <div style={{ flex:1, height:"1px", background:`linear-gradient(to left, transparent, ${T.border})` }} />
+  </div>
+);
+
+const Logo = () => (
+  <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"28px" }}>
+    <div style={{ position:"relative", width:"22px", height:"22px", flexShrink:0 }}>
+      <div style={{ position:"absolute", inset:0, border:`1px solid ${T.gold}`, transform:"rotate(45deg)" }} />
+      <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", width:"5px", height:"5px", background:T.gold }} />
+    </div>
+    <div>
+      <div style={{ color:T.gold, fontSize:"13px", fontWeight:"700", letterSpacing:"0.3em" }}>MICHISHIRUBE</div>
+      <div style={{ color:T.textMuted, fontSize:"9px", letterSpacing:"0.15em", marginTop:"1px" }}>道しるべ</div>
+    </div>
+  </div>
+);
+
+const Page = ({ children, scrollable }) => (
+  <div style={{
+    minHeight:"100dvh", background:T.bg,
+    display:"flex", alignItems: scrollable ? "flex-start" : "center", justifyContent:"center",
+    padding:"32px 20px", overflowY: scrollable ? "auto" : "visible",
+  }}>
+    {children}
+  </div>
+);
+
+const GoldBtn = ({ children, onClick, disabled, style }) => (
+  <button onClick={onClick} disabled={disabled} style={{
+    width:"100%", padding:"15px 20px",
+    background: disabled ? T.surfaceHi : `linear-gradient(135deg, #8a6f42, ${T.gold}, #a07840)`,
+    border:"none", borderRadius:"10px",
+    color: disabled ? T.textMuted : "#16161a",
+    fontSize:"14px", fontWeight:"700", cursor: disabled ? "not-allowed" : "pointer",
+    letterSpacing:"0.04em",
+    boxShadow: disabled ? "none" : "0 4px 20px rgba(201,169,110,0.25)",
+    ...(style || {})
+  }}>{children}</button>
+);
+
+const GhostBtn = ({ children, onClick, style }) => (
+  <button onClick={onClick} style={{
+    padding:"12px 18px", background:"transparent",
+    border:`1px solid ${T.border}`, borderRadius:"8px",
+    color:T.textSub, fontSize:"13px", cursor:"pointer",
+    ...(style || {})
+  }}>{children}</button>
+);
+
+function App() {
+  const [phase, setPhase] = useState("key");
+  const [apiKey, setApiKey] = useState("");
+  const [userName, setUserName] = useState("");
+  const [cat, setCat] = useState(null);
+  const [sub, setSub] = useState(null);
+  const [doc, setDoc] = useState("");
+  const [msgs, setMsgs] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [awaitConfirm, setAwaitConfirm] = useState(false);
+  const [error, setError] = useState("");
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior:"smooth" });
+  }, [msgs, loading]);
+
+  const system = buildSystem(cat, sub, doc, userName);
+
+  const startSession = async () => {
+    setPhase("chat"); setLoading(true); setError("");
+    try {
+      const reply = await callGemini(apiKey, system, [{ role:"user", content:"セッションを開始してください。" }]);
+      setMsgs([{ role:"assistant", content:reply }]);
+    } catch(e) {
+      setError("APIキーを確認してください：" + e.message);
+      setPhase("key");
+    }
+    setLoading(false);
+  };
+
+  const send = async (text) => {
+    if (!text.trim() || loading) return;
+    const next = [...msgs, { role:"user", content:text }];
+    setMsgs(next); setInput(""); setLoading(true); setAwaitConfirm(false);
+    try {
+      const reply = await callGemini(apiKey, system, next);
+      const isConfirm = ["整理してみますか","まとめてみますか","振り返ってみますか"].some(p => reply.includes(p));
+      setMsgs([...next, { role:"assistant", content:reply }]);
+      if (isConfirm) setAwaitConfirm(true);
+    } catch(e) {
+      setMsgs([...next, { role:"assistant", content:"エラーが発生しました。もう一度お試しください。" }]);
+    }
+    setLoading(false);
+  };
+
+  const doSummary = async () => {
+    setAwaitConfirm(false); setLoading(true);
+
+    // 整理専用のシステムプロンプト（JSONのみ返すよう厳命）
+    const summarySystem = `あなたは会話の内容を構造化JSONに変換する専門エージェントです。
+以下の会話から情報を抽出し、必ずこのJSON形式のみで返してください。
+前後に説明文・コードブロック記号(\`\`\`)・改行は一切含めないこと。
+{"type":"summary","data":{"situation":"現状の説明","issues":["課題1","課題2"],"causes":["原因1","原因2"],"solutions":["解決策1","解決策2"],"rationale":"なぜその解決策で解決できるかの根拠","positioning":"${cat?.id === "team" ? "" : "市場での競合優位ポジショニング・USP"}"}}
+teamテーマの場合positioningは空文字。各フィールドは会話から読み取れる範囲で埋めること。`;
+
+    const conversationText = msgs.map(m =>
+      (m.role === "assistant" ? "AI: " : "ユーザー: ") + m.content
+    ).join("\n");
+
+    try {
+      const reply = await callGemini(
+        apiKey,
+        summarySystem,
+        [{ role:"user", content:`以下の会話を整理してJSONで返してください。\n\n${conversationText}` }],
+        true  // jsonMode ON
+      );
+      const parsed = extractJSON(reply);
+      if (parsed?.type === "summary") {
+        setSummary(parsed.data);
+        setPhase("summary");
+      } else {
+        // パース失敗時は再度通常モードで試みる
+        const retry = await callGemini(
+          apiKey,
+          summarySystem,
+          [{ role:"user", content:`以下の会話を整理してJSONで返してください。\n\n${conversationText}` }],
+          false
+        );
+        const parsed2 = extractJSON(retry);
+        if (parsed2?.type === "summary") {
+          setSummary(parsed2.data);
+          setPhase("summary");
+        } else {
+          setMsgs(prev => [...prev, { role:"assistant", content:"整理の生成に失敗しました。もう一度「整理してください」とお伝えください。" }]);
+        }
+      }
+    } catch(e) {
+      setMsgs(prev => [...prev, { role:"assistant", content:"エラーが発生しました：" + e.message }]);
+    }
+    setLoading(false);
+  };
+
+  const reset = () => {
+    setPhase("name"); setCat(null); setSub(null); setDoc("");
+    setMsgs([]); setInput(""); setSummary(null); setAwaitConfirm(false);
+  };
+
+  /* ── APIキー ── */
+  if (phase === "key") return (
+    <Page>
+      <div style={{ maxWidth:"420px", width:"100%" }}>
+        <Logo />
+        <h1 style={{ color:T.text, fontSize:"24px", fontWeight:"300", lineHeight:"1.5", margin:"0 0 10px" }}>
+          API キーを入力
+        </h1>
+        <p style={{ color:T.textSub, fontSize:"13px", lineHeight:"1.8", margin:"0 0 24px" }}>
+          Google AI Studio のAPIキーを入力してください。<br />キーはこのセッション内のみ保持されます。
+        </p>
+        {error && <div style={{ background:"rgba(180,60,60,0.15)", border:"1px solid rgba(180,60,60,0.4)", borderRadius:"8px", padding:"10px 14px", color:"#f87171", fontSize:"12px", marginBottom:"16px" }}>{error}</div>}
+        <GoldDivider />
+        <input
+          type="password"
+          value={apiKey}
+          onChange={e => setApiKey(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && apiKey.trim()) setPhase("name"); }}
+          placeholder="AIzaSy..."
+          style={{ width:"100%", padding:"14px 16px", background:T.surface, border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text, fontSize:"14px", outline:"none", fontFamily:"monospace", marginBottom:"16px" }}
+          autoComplete="off"
+        />
+        <GoldBtn disabled={!apiKey.trim()} onClick={() => setPhase("name")}>次へ　→</GoldBtn>
+      </div>
+    </Page>
+  );
+
+  /* ── 名前入力 ── */
+  if (phase === "name") return (
+    <Page>
+      <div style={{ maxWidth:"420px", width:"100%" }}>
+        <Logo />
+        <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"8px" }}>WELCOME</p>
+        <h1 style={{ color:T.text, fontSize:"24px", fontWeight:"300", lineHeight:"1.5", margin:"0 0 10px" }}>
+          あなたのお名前を<br />教えてください
+        </h1>
+        <p style={{ color:T.textSub, fontSize:"13px", lineHeight:"1.8", margin:"0 0 4px" }}>
+          セッション中にお名前でお呼びします。
+        </p>
+        <GoldDivider />
+        <input
+          type="text"
+          value={userName}
+          onChange={e => setUserName(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && userName.trim()) setPhase("theme"); }}
+          placeholder="例：田中"
+          style={{ width:"100%", padding:"14px 16px", background:T.surface, border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text, fontSize:"16px", outline:"none", marginBottom:"16px" }}
+          autoFocus
+        />
+        <GoldBtn disabled={!userName.trim()} onClick={() => setPhase("theme")}>次へ　→</GoldBtn>
+        <button onClick={() => { setUserName(""); setPhase("theme"); }}
+          style={{ width:"100%", marginTop:"10px", padding:"12px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textMuted, fontSize:"13px", cursor:"pointer" }}>
+          名前を入力せずに進む
+        </button>
+      </div>
+    </Page>
+  );
+
+  /* ── テーマ選択 ── */
+  if (phase === "theme") return (
+    <Page scrollable={true}>
+      <div style={{ maxWidth:"560px", width:"100%", paddingTop:"8px" }}>
+        <Logo />
+        <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"8px" }}>THINK TOGETHER</p>
+        <h1 style={{ color:T.text, fontSize:"24px", fontWeight:"300", lineHeight:"1.5", margin:"0 0 4px" }}>
+          {userName.trim() ? `${userName.trim()}さん、` : ""}今日は何について<br />考えますか？
+        </h1>
+        <GoldDivider />
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px", marginBottom:"8px" }}>
+          {CATEGORIES.map(c => (
+            <button key={c.id} onClick={() => { setCat(c); setSub(null); }} style={{
+              background: cat?.id === c.id ? T.goldGlow : T.surface,
+              border: `1px solid ${cat?.id === c.id ? T.goldDim : T.border}`,
+              borderRadius:"10px", padding:"18px 14px", cursor:"pointer",
+              display:"flex", flexDirection:"column", alignItems:"center", gap:"10px",
+            }}>
+              <div style={{
+                width:"38px", height:"38px", borderRadius:"50%",
+                background: cat?.id === c.id ? T.gold : T.surfaceHi,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                color: cat?.id === c.id ? "#16161a" : T.textSub,
+                fontSize:"12px", fontWeight:"700", letterSpacing:"0.05em",
+              }}>{c.icon}</div>
+              <span style={{ fontSize:"13px", fontWeight:"600", color: cat?.id === c.id ? T.gold : T.text }}>{c.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {cat && (
+          <div style={{ animation:"fadeIn 0.2s ease" }}>
+            <GoldDivider />
+            <p style={{ color:T.textSub, fontSize:"13px", marginBottom:"14px" }}>具体的なテーマを選んでください</p>
+            <div style={{ display:"flex", flexDirection:"column", gap:"8px", marginBottom:"24px" }}>
+              {cat.sub.map(s => (
+                <button key={s.id} onClick={() => setSub(s.id === sub?.id ? null : s)} style={{
+                  background: sub?.id === s.id ? T.goldGlow : T.surface,
+                  border: `1px solid ${sub?.id === s.id ? T.goldDim : T.borderSub}`,
+                  borderRadius:"8px", padding:"14px 16px", cursor:"pointer",
+                  textAlign:"left", color: sub?.id === s.id ? T.text : T.textSub,
+                  fontSize:"14px", display:"flex", alignItems:"center", gap:"10px",
+                }}>
+                  <span style={{ color: sub?.id === s.id ? T.gold : T.textMuted, fontSize:"10px" }}>
+                    {sub?.id === s.id ? "◆" : "◇"}
+                  </span>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {sub && <GoldBtn onClick={() => setPhase("doc")}>次へ　→</GoldBtn>}
+      </div>
+    </Page>
+  );
+
+  /* ── 資料入力 ── */
+  if (phase === "doc") return (
+    <Page scrollable={true}>
+      <div style={{ maxWidth:"560px", width:"100%", paddingTop:"8px" }}>
+        <Logo />
+        <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"8px" }}>PROPERTY DATA</p>
+        <h1 style={{ color:T.text, fontSize:"22px", fontWeight:"300", lineHeight:"1.5", margin:"0 0 10px" }}>
+          物件・市場資料の貼り付け
+        </h1>
+        <p style={{ color:T.textSub, fontSize:"13px", lineHeight:"1.8", margin:"0 0 4px" }}>
+          競合調査・媒体実績・物件情報などを貼り付けると精度の高い対話が可能になります。
+          <br /><span style={{ color:T.textMuted }}>※ スキップも可能です</span>
+        </p>
+        <GoldDivider />
+        <textarea
+          value={doc}
+          onChange={e => setDoc(e.target.value)}
+          placeholder={"■競合物件\n・○○レジデンス：3LDK 4,500万〜、駅徒歩5分、残15戸\n・△△マンション：3LDK 4,200万〜、完売\n\n■自物件\n・□□ザレジデンス：3LDK 4,800万〜、駅徒歩3分、残32戸\n・月間来場：12組、契約：2件"}
+          style={{ width:"100%", minHeight:"180px", padding:"14px 16px", background:T.surface, border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text, fontSize:"13px", lineHeight:"1.75", resize:"vertical", outline:"none", marginBottom:"16px" }}
+        />
+        <div style={{ display:"flex", gap:"10px" }}>
+          <GhostBtn onClick={() => setPhase("theme")}>← 戻る</GhostBtn>
+          <GoldBtn onClick={startSession} style={{ flex:1 }}>
+            {doc.trim() ? "資料を渡して開始　→" : "資料なしで開始　→"}
+          </GoldBtn>
+        </div>
+      </div>
+    </Page>
+  );
+
+  /* ── チャット ── */
+  if (phase === "chat") return (
+    <div style={{ height:"100dvh", display:"flex", flexDirection:"column", background:T.bg }}>
+      {/* ヘッダー */}
+      <div style={{ background:T.surface, borderBottom:`1px solid ${T.border}`, padding:"12px 16px", display:"flex", alignItems:"center", gap:"12px", flexShrink:0 }}>
+        <button onClick={reset} style={{ background:"transparent", border:`1px solid ${T.border}`, borderRadius:"6px", padding:"6px 12px", color:T.textSub, fontSize:"12px", cursor:"pointer", flexShrink:0 }}>
+          終了
+        </button>
+        <div style={{ flex:1, textAlign:"center" }}>
+          <div style={{ color:T.gold, fontSize:"10px", letterSpacing:"0.15em", marginBottom:"2px" }}>{cat?.label}</div>
+          <div style={{ color:T.text, fontSize:"13px", fontWeight:"600" }}>{sub?.label}</div>
+          {userName.trim() && <div style={{ color:T.textMuted, fontSize:"11px", marginTop:"1px" }}>{userName}さん</div>}
+        </div>
+        <div style={{ width:"52px" }} />
+      </div>
+
+      {/* メッセージ */}
+      <div style={{ flex:1, overflowY:"auto", padding:"20px 16px", display:"flex", flexDirection:"column", gap:"18px", WebkitOverflowScrolling:"touch" }}>
+        {msgs.map((m, i) => (
+          <div key={i} style={{ display:"flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", gap:"10px", animation:"fadeIn 0.2s ease" }}>
+            {m.role === "assistant" && (
+              <div style={{ width:"32px", height:"32px", borderRadius:"50%", background:T.surface, border:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:"2px" }}>
+                <span style={{ color:T.gold, fontSize:"10px", fontWeight:"700" }}>AI</span>
+              </div>
+            )}
+            <div style={m.role === "user" ? {
+              maxWidth:"82%", background:T.surfaceHi, border:`1px solid ${T.border}`,
+              borderRadius:"14px 4px 14px 14px", padding:"12px 16px",
+            } : {
+              maxWidth:"82%", background:T.surface, borderLeft:`2px solid ${T.goldDim}`,
+              borderRadius:"2px 12px 12px 2px", padding:"12px 16px",
+            }}>
+              <RichText text={m.content} color={m.role === "user" ? T.champagne : T.text} />
+            </div>
+          </div>
+        ))}
+
+        {awaitConfirm && !loading && (
+          <div style={{ paddingLeft:"42px", display:"flex", flexDirection:"column", gap:"8px", animation:"fadeIn 0.2s ease" }}>
+            <div style={{ color:T.textMuted, fontSize:"11px", letterSpacing:"0.1em", marginBottom:"2px" }}>— ご選択ください —</div>
+            <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+              <button onClick={doSummary} style={{ padding:"10px 16px", background:T.goldGlow, border:`1px solid ${T.goldDim}`, borderRadius:"8px", color:T.gold, fontSize:"13px", fontWeight:"600", cursor:"pointer" }}>
+                ✦ はい、整理してください
+              </button>
+              <button onClick={() => { setAwaitConfirm(false); send("まだ話したいことがあります。続けてください。"); }}
+                style={{ padding:"10px 16px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textSub, fontSize:"13px", cursor:"pointer" }}>
+                もう少し続ける
+              </button>
+            </div>
+          </div>
+        )}
+
+        {loading && (
+          <div style={{ display:"flex", gap:"10px", alignItems:"flex-start" }}>
+            <div style={{ width:"32px", height:"32px", borderRadius:"50%", background:T.surface, border:`1px solid ${T.border}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+              <span style={{ color:T.gold, fontSize:"10px", fontWeight:"700" }}>AI</span>
+            </div>
+            <div style={{ background:T.surface, borderLeft:`2px solid ${T.goldDim}`, borderRadius:"2px 12px 12px 2px", padding:"14px 18px" }}>
+              <div style={{ display:"flex", gap:"5px", alignItems:"center" }}>
+                {[0, 0.2, 0.4].map((d, i) => (
+                  <div key={i} style={{ width:"7px", height:"7px", borderRadius:"50%", background:T.gold, animation:`glow 1.2s ease-in-out ${d}s infinite` }} />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* 入力エリア */}
+      <div style={{ borderTop:`1px solid ${T.border}`, padding:"12px 16px", background:T.surface, flexShrink:0 }}>
+        <div style={{ display:"flex", gap:"8px", alignItems:"flex-end" }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
+            placeholder="考えを入力してください"
+            rows={2}
+            disabled={loading}
+            style={{ flex:1, padding:"12px 14px", background:T.surfaceHi, border:`1px solid ${T.border}`, borderRadius:"10px", color:T.text, fontSize:"14px", resize:"none", outline:"none", lineHeight:"1.6" }}
+          />
+          <button
+            onClick={() => send(input)}
+            disabled={!input.trim() || loading}
+            style={{ padding:"12px 18px", background: input.trim() && !loading ? `linear-gradient(135deg, #8a6f42, ${T.gold})` : T.surfaceHi, border:"none", borderRadius:"10px", color: input.trim() && !loading ? "#16161a" : T.textMuted, fontSize:"14px", fontWeight:"700", cursor: input.trim() && !loading ? "pointer" : "not-allowed", flexShrink:0 }}>
+            送信
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  /* ── サマリー ── */
+  if (phase === "summary" && summary) {
+    const isTeam = cat?.id === "team";
+    const blocks = [
+      { key:"situation", label:"現状",  color:"#7a6a50" },
+      { key:"issues",    label:"課題",  color:"#8a4a4a" },
+      { key:"causes",    label:"原因",  color:"#4a5a8a" },
+      { key:"solutions", label:"解決策", color:"#3a7a5a" },
+      { key:"rationale", label:"根拠",  color:"#5a6a4a" },
+    ];
+    return (
+      <Page scrollable={true}>
+        <div style={{ maxWidth:"640px", width:"100%", paddingTop:"8px" }}>
+          <Logo />
+          <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"6px" }}>SESSION SUMMARY</p>
+          <h1 style={{ color:T.text, fontSize:"20px", fontWeight:"300", margin:"0 0 4px" }}>{sub?.label}</h1>
+          <p style={{ color:T.textMuted, fontSize:"12px", marginBottom:"0" }}>
+            {cat?.label}{userName.trim() ? `　／　${userName}さん` : ""}
+          </p>
+          <GoldDivider />
+
+          {blocks.map(({ key, label, color }) => {
+            const val = summary[key];
+            if (!val || (Array.isArray(val) && val.length === 0)) return null;
+            const items = Array.isArray(val) ? val : [val];
+            return (
+              <div key={key} style={{ marginBottom:"18px", animation:"fadeIn 0.3s ease" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"10px" }}>
+                  <div style={{ width:"3px", height:"18px", background:color, borderRadius:"2px", flexShrink:0 }} />
+                  <span style={{ color:T.textSub, fontSize:"11px", fontWeight:"700", letterSpacing:"0.15em" }}>{label}</span>
+                </div>
+                <div style={{ paddingLeft:"13px", borderLeft:`1px solid ${T.borderSub}`, display:"flex", flexDirection:"column", gap:"8px" }}>
+                  {items.map((item, i) => (
+                    <div key={i} style={{ display:"flex", gap:"8px", color:T.text, fontSize:"14px", lineHeight:"1.8" }}>
+                      {items.length > 1 && <span style={{ color:T.goldDim, flexShrink:0, marginTop:"3px" }}>◇</span>}
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          {!isTeam && summary.positioning && (
+            <>
+              <GoldDivider />
+              <div style={{ background:T.goldGlowS, border:`1px solid ${T.goldDim}`, borderRadius:"10px", padding:"20px", marginBottom:"8px", animation:"fadeIn 0.3s ease" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"12px" }}>
+                  <span style={{ color:T.gold }}>✦</span>
+                  <span style={{ color:T.gold, fontSize:"11px", fontWeight:"700", letterSpacing:"0.15em" }}>競合優位ポジショニング（USP）</span>
+                </div>
+                <p style={{ color:T.champagne, fontSize:"14px", lineHeight:"1.9", margin:0, fontWeight:"500" }}>
+                  {summary.positioning}
+                </p>
+              </div>
+            </>
+          )}
+
+          <GoldDivider />
+          <div style={{ display:"flex", gap:"10px", paddingBottom:"32px" }}>
+            <GhostBtn onClick={() => setPhase("chat")}>← 戻る</GhostBtn>
+            <GoldBtn onClick={reset} style={{ flex:1 }}>新しいセッション</GoldBtn>
+          </div>
+        </div>
+      </Page>
+    );
+  }
+
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
