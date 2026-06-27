@@ -115,16 +115,36 @@ ${cat?.label} ／ ${sub?.label}
 ${callName ? `「${callName}、今日は〈${sub?.label}〉について一緒に考えていきましょう。」` : `「今日は〈${sub?.label}〉について一緒に考えていきましょう。」`}と添えてから、PHASE1の現状把握の問いを1つだけ投げる。`;
 };
 
-// ── GAS API呼び出し ──
-const gasCall = async (action, params) => {
-  const res = await fetch(GAS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain" },
-    body: JSON.stringify({ action, ...params }),
-  });
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error || "GASエラー");
-  return data;
+// ── GAS API呼び出し（リトライ付き）──
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const gasCall = async (action, params, retries = 2) => {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ action, ...params }),
+      });
+      // 503/429はリトライ対象
+      if (res.status === 503 || res.status === 429) {
+        if (attempt < retries) {
+          await sleep(2000 * (attempt + 1));
+          continue;
+        }
+        throw new Error(`サーバーが混雑しています（${res.status}）。少し時間をおいて再送信してください。`);
+      }
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "GASエラー");
+      return data;
+    } catch(e) {
+      if (attempt < retries && e.name !== "TypeError") {
+        await sleep(2000 * (attempt + 1));
+        continue;
+      }
+      throw e;
+    }
+  }
 };
 
 // ── UIコンポーネント ──
@@ -289,8 +309,8 @@ function App() {
       setMsgs([...next, { role:"assistant", content:reply }]);
       if (isConfirm) setAwaitConfirm(true);
     } catch(e) {
-      // エラーでも会話ログは既にGASで保存済み
-      setMsgs([...next, { role:"assistant", content:`⚠️ 通信エラーが発生しました。これまでの会話はDriveに自動保存されています。\n（${e.message}）` }]);
+      // エラー時は会話テキストをユーザーが手動で保持できるようメッセージ改善
+      setMsgs([...next, { role:"assistant", content:`⚠️ 通信エラーが発生しました。\n${e.message}\n\n入力内容は画面上に残っています。少し時間をおいてから再度送信してください。` }]);
     }
     setLoading(false);
   };
