@@ -31,6 +31,45 @@ const { useState, useRef, useEffect } = React;
 const GAS_URL = "https://script.google.com/macros/s/AKfycby2FPLY481IPvk2BNhc0iJcAlvn7PDt4bX9VGOJHuNQwyMLeoBj3_HvJQRtbtacaqFAxQ/exec";
 // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
+// GASが未設定かどうかの判定
+const GAS_READY = !GAS_URL.includes("YOUR_DEPLOYMENT_ID");
+
+// Gemini直接呼び出し（GAS未設定時のフォールバック）
+const callGeminiDirect = async (apiKey, systemPrompt, messages, jsonMode = false) => {
+  const contents = messages.map(m => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents,
+        generationConfig: {
+          maxOutputTokens: jsonMode ? 1200 : 600,
+          temperature: jsonMode ? 0.1 : 0.7,
+          ...(jsonMode ? { responseMimeType: "application/json" } : {}),
+        },
+      }),
+    }
+  );
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+};
+
+// JSON抽出
+const extractJSON = (text) => {
+  const cleaned = text.replace(/^```json\s*/i,"").replace(/^```\s*/i,"").replace(/```\s*$/i,"").trim();
+  try { return JSON.parse(cleaned); } catch {}
+  const m = cleaned.match(/(\{[\s\S]*\})/);
+  if (m) { try { return JSON.parse(m[1]); } catch {} }
+  return null;
+};
+
 const T = {
   bg:"#faf8f4", surface:"#ffffff", surfaceHi:"#f5f0e8",
   border:"#e0d5c0", borderSub:"#ede6d6",
@@ -78,25 +117,19 @@ const buildSystem = (cat, sub, docText, userName) => {
 - 返答は簡潔に。1〜3文を基本とする。
 - 相手の名前：${nameRef}。自然なタイミングで使う（毎回は使わない）。
 - 丁寧だが堅すぎず、伴走者として自然なトーンで話す。
+- 内部的なフェーズ名（PHASE1〜4など）は絶対に発言しない。あくまで自然な会話として進める。
 
-## 会話のフェーズ設計
-### PHASE1｜現状把握（2〜3往復）
-事実・数字・期間を引き出す。teamテーマ以外では市場・競合の把握状況も確認。
+## 会話の進め方（内部指針・発言禁止）
+【ステップ1：現状把握】まず事実・数字・期間を引き出す。teamテーマ以外では市場・競合の把握状況も確認。2〜3往復を目安にする。
 
-### PHASE2｜課題と原因の深掘り
-「なぜそうなっているか」を掘り下げる。表面的な答えで止まらせない。
-ソクラテス式（なぜ？）とコーチング式（状況→課題→原因）を使い分ける。
+【ステップ2：課題と原因の深掘り】「なぜそうなっているか」を掘り下げる。表面的な答えで止まらせない。ソクラテス式（なぜ？）とコーチング式（状況→課題→原因）を使い分ける。
 
-### PHASE3｜解決策と根拠を引き出す
-「では何ができると思いますか？」「なぜそれが効くと思いますか？」と相手に語らせる。
-${!isTeam ? "競合との比較・市場ポジショニングの観点も引き出す。USPはスペック訴求ではなくエリア・タイミング固有の根拠まで深める。" : ""}
+【ステップ3：解決策と根拠を引き出す】「では何ができると思いますか？」「なぜそれが効くと思いますか？」と相手に語らせる。${!isTeam ? "競合との比較・市場ポジショニングの観点も引き出す。USPはスペック訴求ではなくエリア・タイミング固有の根拠まで深める。" : ""}
 
-### PHASE4｜収束・整理への誘導
-課題・原因・解決策が出揃ったと判断したら自分から整理を提案する：
-「ここまでの話を聞いていると、〇〇という核心が見えてきました。一度ここで考えを整理してみますか？」
+【ステップ4：収束・整理への誘導】課題・原因・解決策が出揃ったと判断したら自分から自然に整理を提案する。例：「ここまでの話を聞いていると、〇〇という核心が見えてきました。一度考えを整理してみますか？」
 
 ## 示唆のルール
-以下の状況ではヒントを与えてよい（ただし問いかけの形で。答えは出さない）：
+以下の状況ではヒントを与えてよい（問いかけの形で。答えは出さない）：
 - 本質からずれている → 「少し視点を変えると、〇〇という側面はどうでしょう？」
 - 同じところをぐるぐる → 「別の角度から見ると…」と切り口を変える
 - 詰まっている → 選択肢を2〜3個提示
@@ -112,7 +145,7 @@ ${docText}
 ${cat?.label} ／ ${sub?.label}
 
 ## セッション開始
-${callName ? `「${callName}、今日は〈${sub?.label}〉について一緒に考えていきましょう。」` : `「今日は〈${sub?.label}〉について一緒に考えていきましょう。」`}と添えてから、PHASE1の現状把握の問いを1つだけ投げる。`;
+${callName ? `「${callName}、今日は〈${sub?.label}〉について一緒に考えていきましょう。」` : `「今日は〈${sub?.label}〉について一緒に考えていきましょう。」`}と添えてから、現状を把握する問いを1つだけ自然に投げる。`;
 };
 
 // ── GAS API呼び出し（リトライ付き）──
@@ -123,8 +156,9 @@ const gasCall = async (action, params, retries = 2) => {
     try {
       const res = await fetch(GAS_URL, {
         method: "POST",
-        headers: { "Content-Type": "text/plain" },
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action, ...params }),
+        redirect: "follow",
       });
       // 503/429はリトライ対象
       if (res.status === 503 || res.status === 429) {
@@ -134,11 +168,15 @@ const gasCall = async (action, params, retries = 2) => {
         }
         throw new Error(`サーバーが混雑しています（${res.status}）。少し時間をおいて再送信してください。`);
       }
-      const data = await res.json();
+      // テキストで受け取ってからJSONパース（CORSエラー時のデバッグのため）
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); }
+      catch(pe) { throw new Error(`レスポンス解析エラー。GASのデプロイURLを確認してください。受信内容: ${text.slice(0,100)}`); }
       if (!data.ok) throw new Error(data.error || "GASエラー");
       return data;
     } catch(e) {
-      if (attempt < retries && e.name !== "TypeError") {
+      if (attempt < retries && !e.message.includes("デプロイURL")) {
         await sleep(2000 * (attempt + 1));
         continue;
       }
@@ -225,21 +263,23 @@ const ErrorBox = ({ msg }) => msg ? (
 
 // ── メインApp ──
 function App() {
-  const [phase, setPhase] = useState("setup"); // setup|name|theme|doc|loading|chat|summary
-  const [gasUrl,   setGasUrl]   = useState(GAS_URL);
-  const [userName, setUserName] = useState("");
-  const [propCode, setPropCode] = useState("");
-  const [propName, setPropName] = useState("");
-  const [folderId, setFolderId] = useState("");
-  const [docText,  setDocText]  = useState("");
+  const [phase, setPhase] = useState("setup"); // setup|name|prop|theme|chat|summary
+  const [gasUrl,      setGasUrl]      = useState(GAS_URL);
+  const [geminiKey,   setGeminiKey]   = useState(""); // GAS未設定時のフォールバック用
+  const [userName,    setUserName]    = useState("");
+  const [propCode,    setPropCode]    = useState("");
+  const [propName,    setPropName]    = useState("");
+  const [folderId,    setFolderId]    = useState("");
+  const [docText,     setDocText]     = useState("");
   const [cat, setCat] = useState(null);
   const [sub, setSub] = useState(null);
   const [msgs,  setMsgs]  = useState([]);
   const [input, setInput] = useState("");
   const [loading,      setLoading]      = useState(false);
   const [awaitConfirm, setAwaitConfirm] = useState(false);
-  const [summary, setSummary] = useState(null);
-  const [error,   setError]   = useState("");
+  const [summary,  setSummary]  = useState(null);
+  const [error,    setError]    = useState("");
+  const [saveInfo, setSaveInfo] = useState(""); // Drive保存先の表示用
   const [sessionId, setSessionId] = useState("");
   const bottomRef = useRef(null);
   const inputRef  = useRef(null);
@@ -250,6 +290,45 @@ function App() {
 
   const system = buildSystem(cat, sub, docText, userName);
 
+  // GAS経由 or Gemini直接のスマートな呼び出しラッパー
+  const smartChat = async (messages) => {
+    if (GAS_READY) {
+      const res = await gasCall("chat", { messages, systemPrompt:system, folderId, sessionId });
+      return res.reply;
+    } else {
+      // GAS未設定：Gemini直接呼び出し
+      if (!geminiKey) throw new Error("APIキーが設定されていません。SETUPでGemini APIキーを入力してください。");
+      return await callGeminiDirect(geminiKey, system, messages, false);
+    }
+  };
+
+  const smartSummary = async (messages) => {
+    if (GAS_READY) {
+      const trimmed = messages.length > 40 ? messages.slice(-40) : messages;
+      return await gasCall("saveSummary", {
+        messages: trimmed,
+        folderId: folderId || "",
+        sessionId: sessionId || "no_session",
+        categoryId: cat?.id || "", categoryLabel: cat?.label || "",
+        subLabel: sub?.label || "", userName: userName || "",
+      });
+    } else {
+      // GAS未設定：Gemini直接でサマリー生成（Drive保存なし）
+      if (!geminiKey) throw new Error("APIキーが設定されていません。");
+      const isTeam = cat?.id === "team";
+      const summarySystem = `会話を構造化JSONに変換してください。前後に説明文・コードブロック記号は不要。
+{"type":"summary","data":{"situation":"現状","issues":["課題"],"causes":["原因"],"solutions":["解決策"],"rationale":"根拠","positioning":"${isTeam?"":"USP"}","ai_comment":"AIの所見1〜3文"}}`;
+      const conv = messages.map(m => (m.role==="assistant"?"AI: ":"ユーザー: ") + m.content).join("\n");
+      const trimmed = messages.length > 40 ? messages.slice(-40) : messages;
+      const convTrimmed = trimmed.map(m => (m.role==="assistant"?"AI: ":"ユーザー: ") + m.content).join("\n");
+      const reply = await callGeminiDirect(geminiKey, summarySystem,
+        [{ role:"user", content:`以下の会話を整理してJSONで返してください。\n\n${convTrimmed}` }], true);
+      const parsed = extractJSON(reply);
+      if (!parsed || parsed.type !== "summary") throw new Error("JSON生成に失敗しました。");
+      setSaveInfo("（GAS未設定のためDrive保存なし）");
+      return { ok:true, summary: parsed.data };
+    }
+  };
   // セッションID生成
   const genSessionId = () => {
     const d = new Date();
@@ -280,15 +359,12 @@ function App() {
     setSessionId(sid);
     setPhase("chat"); setLoading(true); setError("");
     try {
-      const res = await gasCall("chat", {
-        messages: [{ role:"user", content:"セッションを開始してください。" }],
-        systemPrompt: system,
-        folderId, sessionId: sid,
-      });
-      setMsgs([{ role:"assistant", content:res.reply }]);
+      const init = [{ role:"user", content:"セッションを開始してください。" }];
+      const reply = await smartChat(init);
+      setMsgs([{ role:"assistant", content:reply }]);
     } catch(e) {
       setError("セッション開始に失敗しました：" + e.message);
-      setPhase("doc");
+      setPhase("theme");
     }
     setLoading(false);
   };
@@ -299,18 +375,12 @@ function App() {
     const next = [...msgs, { role:"user", content:text }];
     setMsgs(next); setInput(""); setLoading(true); setAwaitConfirm(false);
     try {
-      const res = await gasCall("chat", {
-        messages: next,
-        systemPrompt: system,
-        folderId, sessionId,
-      });
-      const reply = res.reply;
+      const reply = await smartChat(next);
       const isConfirm = ["整理してみますか","まとめてみますか","振り返ってみますか"].some(p => reply.includes(p));
       setMsgs([...next, { role:"assistant", content:reply }]);
       if (isConfirm) setAwaitConfirm(true);
     } catch(e) {
-      // エラー時は会話テキストをユーザーが手動で保持できるようメッセージ改善
-      setMsgs([...next, { role:"assistant", content:`⚠️ 通信エラーが発生しました。\n${e.message}\n\n入力内容は画面上に残っています。少し時間をおいてから再度送信してください。` }]);
+      setMsgs([...next, { role:"assistant", content:`⚠️ 通信エラーが発生しました。\n${e.message}\n\n少し時間をおいてから再度送信してください。` }]);
     }
     setLoading(false);
   };
@@ -319,17 +389,7 @@ function App() {
   const doSummary = async () => {
     setAwaitConfirm(false); setLoading(true);
     try {
-      // 会話が長い場合は直近20往復に絞る（パラメータ過大防止）
-      const trimmedMsgs = msgs.length > 40 ? msgs.slice(-40) : msgs;
-      const res = await gasCall("saveSummary", {
-        messages: trimmedMsgs,
-        folderId: folderId || "",   // 空でもGAS側で対処
-        sessionId: sessionId || "no_session",
-        categoryId:    cat?.id    || "",
-        categoryLabel: cat?.label || "",
-        subLabel:      sub?.label || "",
-        userName:      userName   || "",
-      });
+      const res = await smartSummary(msgs);
       setSummary(res.summary);
       setPhase("summary");
     } catch(e) {
@@ -345,33 +405,50 @@ function App() {
     setPhase("name"); setCat(null); setSub(null);
     setDocText(""); setPropCode(""); setPropName(""); setFolderId("");
     setMsgs([]); setInput(""); setSummary(null);
-    setAwaitConfirm(false); setError(""); setSessionId("");
+    setAwaitConfirm(false); setError(""); setSessionId(""); setSaveInfo("");
   };
 
-  // ── SETUP（GAS URL確認）──
+  // ── SETUP（GAS URL or Gemini APIキー）──
   if (phase === "setup") return (
     <Page>
-      <div style={{ maxWidth:"440px", width:"100%" }}>
+      <div style={{ maxWidth:"480px", width:"100%" }}>
         <Logo />
         <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"8px" }}>SETUP</p>
         <h1 style={{ color:T.text, fontSize:"22px", fontWeight:"300", lineHeight:"1.5", margin:"0 0 10px" }}>
-          GAS エンドポイントの確認
+          接続設定
         </h1>
-        <p style={{ color:T.textSub, fontSize:"13px", lineHeight:"1.8", margin:"0 0 4px" }}>
-          GASをデプロイしたURLを貼り付けてください。<br />
-          <span style={{ color:T.textMuted }}>（初回設定後はこの画面はスキップできます）</span>
-        </p>
         <GoldDivider />
-        <input
-          type="text"
-          value={gasUrl}
-          onChange={e => setGasUrl(e.target.value)}
+
+        {/* GAS URL */}
+        <p style={{ color:T.textSub, fontSize:"13px", fontWeight:"600", margin:"0 0 6px" }}>
+          GAS URL <span style={{ color:T.textMuted, fontWeight:"400" }}>（Drive保存・物件連携あり）</span>
+        </p>
+        <input type="text" value={gasUrl} onChange={e => setGasUrl(e.target.value)}
           placeholder="https://script.google.com/macros/s/.../exec"
           style={{ width:"100%", padding:"12px 14px", background:T.surface,
             border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text,
-            fontSize:"12px", outline:"none", marginBottom:"16px", fontFamily:"monospace" }}
-        />
-        <GoldBtn disabled={!gasUrl.trim()} onClick={() => setPhase("name")}>次へ　→</GoldBtn>
+            fontSize:"12px", outline:"none", marginBottom:"20px", fontFamily:"monospace" }} />
+
+        {/* Gemini APIキー（フォールバック） */}
+        <p style={{ color:T.textSub, fontSize:"13px", fontWeight:"600", margin:"0 0 6px" }}>
+          Gemini APIキー <span style={{ color:T.textMuted, fontWeight:"400" }}>（GAS未設定時のフォールバック）</span>
+        </p>
+        <input type="password" value={geminiKey} onChange={e => setGeminiKey(e.target.value)}
+          placeholder="AIzaSy... （GAS設定済みなら不要）"
+          style={{ width:"100%", padding:"12px 14px", background:T.surface,
+            border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text,
+            fontSize:"13px", outline:"none", marginBottom:"8px", fontFamily:"monospace" }} />
+        <p style={{ color:T.textMuted, fontSize:"11px", lineHeight:"1.7", margin:"0 0 20px" }}>
+          {GAS_READY
+            ? "✓ GAS URL設定済み。Drive保存・物件連携が有効です。"
+            : "⚠️ GAS未設定。Gemini APIキーを入力するとDrive保存なしで動作確認できます。"}
+        </p>
+
+        <GoldBtn
+          disabled={!GAS_READY && !geminiKey.trim()}
+          onClick={() => setPhase("name")}>
+          次へ　→
+        </GoldBtn>
       </div>
     </Page>
   );
@@ -424,6 +501,12 @@ function App() {
           DriveのフォルダからUSP資料・競合情報を自動で読み込みます。
           <br /><span style={{ color:T.textMuted }}>※ スキップするとテーマ選択のみで進みます</span>
         </p>
+        {!GAS_READY && (
+          <div style={{ background:"#fff9f0", border:"1px solid #e8c870", borderRadius:"8px",
+            padding:"10px 14px", marginBottom:"12px", fontSize:"12px", color:"#8a6010" }}>
+            ⚠️ GAS未設定のため物件フォルダ連携は無効です。スキップして進んでください。
+          </div>
+        )}
         <ErrorBox msg={error} />
         <GoldDivider />
         <input
@@ -698,12 +781,14 @@ function App() {
               　／　{new Date().toLocaleDateString("ja-JP")}
             </p>
             <div style={{ marginTop:"10px", padding:"8px 12px", borderRadius:"8px",
-              background: folderId ? "#f0fdf4" : "#fff9f0",
-              border:`1px solid ${folderId ? "#90d0a8" : "#e8c870"}`,
-              fontSize:"12px", color: folderId ? "#0a5a30" : "#8a6010" }}>
+              background: folderId ? "#f0fdf4" : saveInfo ? "#fff9f0" : "#f8f8f8",
+              border:`1px solid ${folderId ? "#90d0a8" : saveInfo ? "#e8c870" : "#e0e0e0"}`,
+              fontSize:"12px", color: folderId ? "#0a5a30" : saveInfo ? "#8a6010" : "#7a7a7a" }}>
               {folderId
                 ? `✓ 物件フォルダ（07_MICHISHIRUBE）に保存されました`
-                : `📁 マイドライブ > MICHISHIRUBE_logs に保存されました`
+                : saveInfo
+                  ? saveInfo
+                  : `📁 マイドライブ > MICHISHIRUBE_logs に保存されました`
               }
             </div>
           </div>
