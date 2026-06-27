@@ -28,7 +28,7 @@
 const { useState, useRef, useEffect } = React;
 
 // ▼▼▼ GASウェブアプリのURLをここに貼り付ける ▼▼▼
-const GAS_URL = "https://script.google.com/macros/s/AKfycby2FPLY481IPvk2BNhc0iJcAlvn7PDt4bX9VGOJHuNQwyMLeoBj3_HvJQRtbtacaqFAxQ/exec";
+const GAS_URL = "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec";
 // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
 const T = {
@@ -319,20 +319,23 @@ function App() {
   const doSummary = async () => {
     setAwaitConfirm(false); setLoading(true);
     try {
+      // 会話が長い場合は直近20往復に絞る（パラメータ過大防止）
+      const trimmedMsgs = msgs.length > 40 ? msgs.slice(-40) : msgs;
       const res = await gasCall("saveSummary", {
-        messages: msgs,
-        folderId, sessionId,
-        categoryId:    cat?.id,
-        categoryLabel: cat?.label,
-        subLabel:      sub?.label,
-        userName,
+        messages: trimmedMsgs,
+        folderId: folderId || "",   // 空でもGAS側で対処
+        sessionId: sessionId || "no_session",
+        categoryId:    cat?.id    || "",
+        categoryLabel: cat?.label || "",
+        subLabel:      sub?.label || "",
+        userName:      userName   || "",
       });
       setSummary(res.summary);
       setPhase("summary");
     } catch(e) {
       setMsgs(prev => [...prev, {
         role:"assistant",
-        content:`⚠️ 整理の生成に失敗しました。もう一度「整理してください」とお伝えください。\n（${e.message}）`
+        content:`⚠️ 整理の生成に失敗しました。\n${e.message}\n\n少し時間をおいてから「整理してください」とお伝えください。`
       }]);
     }
     setLoading(false);
@@ -637,96 +640,130 @@ function App() {
   // ── サマリー ──
   if (phase === "summary" && summary) {
     const isTeam = cat?.id === "team";
+
+    // ブロック定義：ラベル・色・アイコン・背景
     const blocks = [
-      { key:"situation", label:"現状",   color:"#8a7040", bg:"#fdf9f2" },
-      { key:"issues",    label:"課題",   color:"#8a3a3a", bg:"#fdf4f4" },
-      { key:"causes",    label:"原因",   color:"#3a4a8a", bg:"#f4f6fd" },
-      { key:"solutions", label:"解決策", color:"#2a6a4a", bg:"#f2fdf7" },
-      { key:"rationale", label:"根拠",   color:"#4a5a2a", bg:"#f6fdf2" },
+      { key:"situation", label:"📋 現状",   color:"#7a5c20", bg:"#fdf9f0", border:"#e8d5a0" },
+      { key:"issues",    label:"🔍 課題",   color:"#8a2020", bg:"#fdf2f2", border:"#e8b0b0" },
+      { key:"causes",    label:"🧩 原因",   color:"#1a3a8a", bg:"#f2f4fd", border:"#a0b0e8" },
+      { key:"solutions", label:"💡 解決策", color:"#0a5a30", bg:"#f0fdf4", border:"#90d0a8" },
+      { key:"rationale", label:"✅ 根拠",   color:"#2a4a10", bg:"#f4fdf0", border:"#a8d090" },
     ];
+
+    const SummaryBlock = ({ label, color, bg, border, items, isSingle }) => (
+      <div style={{ marginBottom:"16px", background:bg, borderRadius:"12px",
+        border:`1px solid ${border}`, overflow:"hidden", animation:"fadeIn 0.3s ease" }}>
+        {/* ラベルヘッダー */}
+        <div style={{ background: border, padding:"8px 16px", display:"flex", alignItems:"center" }}>
+          <span style={{ color, fontSize:"12px", fontWeight:"700", letterSpacing:"0.1em" }}>{label}</span>
+        </div>
+        {/* コンテンツ */}
+        <div style={{ padding:"12px 16px", display:"flex", flexDirection:"column", gap:"8px" }}>
+          {items.map((item, i) => (
+            <div key={i} style={{ display:"flex", gap:"10px", alignItems:"flex-start" }}>
+              {!isSingle && (
+                <div style={{ width:"20px", height:"20px", borderRadius:"50%", background:color,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  flexShrink:0, marginTop:"2px" }}>
+                  <span style={{ color:"#fff", fontSize:"10px", fontWeight:"700" }}>{i+1}</span>
+                </div>
+              )}
+              <p style={{ color:T.text, fontSize:"14px", lineHeight:"1.85", margin:0, flex:1,
+                fontWeight: isSingle ? "400" : "400" }}>
+                {item}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+
     return (
       <Page scrollable={true}>
         <div style={{ maxWidth:"640px", width:"100%", paddingTop:"8px" }}>
           <Logo />
-          <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"6px" }}>SESSION SUMMARY</p>
-          <h1 style={{ color:T.text, fontSize:"20px", fontWeight:"300", margin:"0 0 4px" }}>{sub?.label}</h1>
-          <p style={{ color:T.textMuted, fontSize:"12px", marginBottom:"0" }}>
-            {propName || cat?.label}{userName.trim() ? `　／　${userName}さん` : ""}
-          </p>
-          {folderId && (
-            <p style={{ color:T.gold, fontSize:"11px", marginTop:"4px" }}>
-              ✓ Driveに保存されました
-            </p>
-          )}
-          <GoldDivider />
 
-          {blocks.map(({ key, label, color, bg }) => {
+          {/* ヘッダー */}
+          <div style={{ background:T.surface, borderRadius:"12px", padding:"16px 20px",
+            border:`1px solid ${T.border}`, marginBottom:"20px" }}>
+            <p style={{ color:T.goldDim, fontSize:"10px", letterSpacing:"0.2em", marginBottom:"4px" }}>
+              SESSION SUMMARY
+            </p>
+            <h1 style={{ color:T.text, fontSize:"18px", fontWeight:"700", margin:"0 0 4px" }}>
+              {sub?.label}
+            </h1>
+            <p style={{ color:T.textMuted, fontSize:"12px", margin:0 }}>
+              {propName || cat?.label}
+              {userName.trim() ? `　／　${userName}さん` : ""}
+              　／　{new Date().toLocaleDateString("ja-JP")}
+            </p>
+            <div style={{ marginTop:"10px", padding:"8px 12px", borderRadius:"8px",
+              background: folderId ? "#f0fdf4" : "#fff9f0",
+              border:`1px solid ${folderId ? "#90d0a8" : "#e8c870"}`,
+              fontSize:"12px", color: folderId ? "#0a5a30" : "#8a6010" }}>
+              {folderId
+                ? `✓ 物件フォルダ（07_MICHISHIRUBE）に保存されました`
+                : `📁 マイドライブ > MICHISHIRUBE_logs に保存されました`
+              }
+            </div>
+          </div>
+
+          {/* 各ブロック */}
+          {blocks.map(({ key, label, color, bg, border }) => {
             const val = summary[key];
-            if (!val || (Array.isArray(val) && val.length===0)) return null;
+            if (!val || (Array.isArray(val) && val.length === 0)) return null;
             const items = Array.isArray(val) ? val : [val];
             return (
-              <div key={key} style={{ marginBottom:"14px", background:bg,
-                borderRadius:"10px", padding:"14px 16px",
-                border:`1px solid ${T.borderSub}`, animation:"fadeIn 0.3s ease" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"10px" }}>
-                  <div style={{ width:"3px", height:"16px", background:color, borderRadius:"2px", flexShrink:0 }} />
-                  <span style={{ color, fontSize:"11px", fontWeight:"700", letterSpacing:"0.15em" }}>{label}</span>
-                </div>
-                <div style={{ display:"flex", flexDirection:"column", gap:"6px" }}>
-                  {items.map((item, i) => (
-                    <div key={i} style={{ display:"flex", gap:"8px", color:T.text, fontSize:"14px", lineHeight:"1.8" }}>
-                      {items.length>1 && <span style={{ color, flexShrink:0, marginTop:"3px", fontSize:"10px" }}>◆</span>}
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <SummaryBlock key={key} label={label} color={color} bg={bg} border={border}
+                items={items} isSingle={items.length === 1} />
             );
           })}
 
+          {/* USP */}
           {!isTeam && summary.positioning && (
-            <>
-              <GoldDivider />
-              <div style={{ background:"linear-gradient(135deg,#fffbf0,#fdf6e3)",
-                border:`1.5px solid ${T.gold}`, borderRadius:"10px",
-                padding:"20px", marginBottom:"8px", animation:"fadeIn 0.3s ease" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"12px" }}>
-                  <span style={{ color:T.gold, fontSize:"14px" }}>✦</span>
-                  <span style={{ color:T.goldDim, fontSize:"11px", fontWeight:"700", letterSpacing:"0.15em" }}>
-                    競合優位ポジショニング（USP）
-                  </span>
-                </div>
-                <p style={{ color:T.text, fontSize:"14px", lineHeight:"1.9", margin:0, fontWeight:"500" }}>
+            <div style={{ background:"linear-gradient(135deg,#fffbf0,#fdf6e3)",
+              border:`2px solid ${T.gold}`, borderRadius:"12px",
+              overflow:"hidden", marginBottom:"16px", animation:"fadeIn 0.3s ease" }}>
+              <div style={{ background:T.gold, padding:"8px 16px", display:"flex", alignItems:"center", gap:"8px" }}>
+                <span style={{ color:"#fff", fontSize:"14px" }}>✦</span>
+                <span style={{ color:"#fff", fontSize:"12px", fontWeight:"700", letterSpacing:"0.1em" }}>
+                  競合優位ポジショニング（USP）
+                </span>
+              </div>
+              <div style={{ padding:"16px" }}>
+                <p style={{ color:T.text, fontSize:"15px", lineHeight:"1.9", margin:0,
+                  fontWeight:"600", borderLeft:`3px solid ${T.gold}`, paddingLeft:"12px" }}>
                   {summary.positioning}
                 </p>
               </div>
-            </>
+            </div>
           )}
 
+          {/* AIひと言 */}
           {summary.ai_comment && (
-            <>
-              <GoldDivider />
-              <div style={{ background:"#f8f5ff", border:"1px solid #c4b0e8",
-                borderRadius:"10px", padding:"20px", marginBottom:"8px", animation:"fadeIn 0.4s ease" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"12px" }}>
-                  <div style={{ width:"28px", height:"28px", borderRadius:"50%",
-                    background:"#7c5cbf", display:"flex", alignItems:"center",
-                    justifyContent:"center", flexShrink:0 }}>
-                    <span style={{ color:"#fff", fontSize:"10px", fontWeight:"700" }}>AI</span>
-                  </div>
-                  <span style={{ color:"#5a3fa0", fontSize:"11px", fontWeight:"700", letterSpacing:"0.1em" }}>
-                    今日の会話を通じて感じたこと
-                  </span>
+            <div style={{ background:"#f6f3ff", border:"1.5px solid #b8a0e0",
+              borderRadius:"12px", overflow:"hidden", marginBottom:"16px", animation:"fadeIn 0.4s ease" }}>
+              <div style={{ background:"#7c5cbf", padding:"8px 16px",
+                display:"flex", alignItems:"center", gap:"8px" }}>
+                <div style={{ width:"20px", height:"20px", borderRadius:"50%",
+                  background:"rgba(255,255,255,0.3)", display:"flex",
+                  alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <span style={{ color:"#fff", fontSize:"9px", fontWeight:"700" }}>AI</span>
                 </div>
-                <p style={{ color:"#3a2a60", fontSize:"14px", lineHeight:"1.9", margin:0 }}>
+                <span style={{ color:"#fff", fontSize:"12px", fontWeight:"700", letterSpacing:"0.08em" }}>
+                  今日の会話を通じて感じたこと
+                </span>
+              </div>
+              <div style={{ padding:"16px" }}>
+                <p style={{ color:"#3a2060", fontSize:"14px", lineHeight:"1.9", margin:0 }}>
                   {summary.ai_comment}
                 </p>
               </div>
-            </>
+            </div>
           )}
 
           <GoldDivider />
-          <div style={{ display:"flex", gap:"10px", paddingBottom:"32px" }}>
+          <div style={{ display:"flex", gap:"10px", paddingBottom:"40px" }}>
             <GhostBtn onClick={() => setPhase("chat")}>← 戻る</GhostBtn>
             <GoldBtn onClick={reset} style={{ flex:1 }}>新しいセッション</GoldBtn>
           </div>
