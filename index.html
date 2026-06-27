@@ -12,15 +12,14 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body, #root { height: 100%; }
-    body { font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic Pro', sans-serif; background: #faf8f4; -webkit-text-size-adjust: 100%; }
+    body { font-family: 'Noto Sans JP','Hiragino Kaku Gothic Pro',sans-serif; background:#faf8f4; -webkit-text-size-adjust:100%; }
     @keyframes glow { 0%,80%,100%{opacity:0.3;transform:scale(1)} 40%{opacity:1;transform:scale(1.3)} }
     @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-    ::-webkit-scrollbar { width: 3px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #d4c9b0; border-radius: 2px; }
-    textarea, input { -webkit-appearance: none; appearance: none; }
-    textarea::placeholder, input::placeholder { color: #b0a090; }
-    button { -webkit-tap-highlight-color: transparent; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+    ::-webkit-scrollbar{width:3px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:#d4c9b0;border-radius:2px}
+    textarea,input{-webkit-appearance:none;appearance:none}
+    textarea::placeholder,input::placeholder{color:#b0a090}
+    button{-webkit-tap-highlight-color:transparent}
   </style>
 </head>
 <body>
@@ -28,20 +27,16 @@
 <script type="text/babel">
 const { useState, useRef, useEffect } = React;
 
+// ▼▼▼ GASウェブアプリのURLをここに貼り付ける ▼▼▼
+const GAS_URL = "https://script.google.com/macros/s/AKfycby2FPLY481IPvk2BNhc0iJcAlvn7PDt4bX9VGOJHuNQwyMLeoBj3_HvJQRtbtacaqFAxQ/exec";
+// ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
 const T = {
-  bg:        "#faf8f4",
-  surface:   "#ffffff",
-  surfaceHi: "#f5f0e8",
-  border:    "#e0d5c0",
-  borderSub: "#ede6d6",
-  gold:      "#b8943f",
-  goldDim:   "#8a6f2e",
-  goldGlow:  "rgba(184,148,63,0.10)",
-  goldGlowS: "rgba(184,148,63,0.06)",
-  text:      "#1a1714",
-  textSub:   "#5a4f3e",
-  textMuted: "#9a8a75",
-  champagne: "#7a5c2e",
+  bg:"#faf8f4", surface:"#ffffff", surfaceHi:"#f5f0e8",
+  border:"#e0d5c0", borderSub:"#ede6d6",
+  gold:"#b8943f", goldDim:"#8a6f2e",
+  goldGlow:"rgba(184,148,63,0.10)", goldGlowS:"rgba(184,148,63,0.06)",
+  text:"#1a1714", textSub:"#5a4f3e", textMuted:"#9a8a75",
 };
 
 const CATEGORIES = [
@@ -69,111 +64,72 @@ const CATEGORIES = [
   ]},
 ];
 
-const buildSystem = (cat, sub, doc, userName) => {
+const buildSystem = (cat, sub, docText, userName) => {
   const isTeam = cat?.id === "team";
-  const hasDoc = doc?.trim().length > 0;
   const callName = userName?.trim() ? userName.trim() + "さん" : "";
-  const nameRef = callName ? `「${callName}」` : "名前なし（「あなた」とも呼ばない。名前を使わず自然に話す）";
+  const nameRef = callName
+    ? `「${callName}」`
+    : "名前なし（「あなた」とも呼ばない。自然に話す）";
   return `あなたはマンション新築分譲の販売事務所スタッフの思考を整理する対話エージェントです。
 相手が自分の力で答えにたどり着くことを支援します。答えを与えるのではなく、気づきを引き出す役割です。
 
 ## 基本ルール
-- 問いかけは1ターンに1問のみ。複数質問を一度に投げない。
+- 問いかけは1ターンに1問のみ。
 - 返答は簡潔に。1〜3文を基本とする。
-- 相手の名前：${nameRef}。会話の中で自然なタイミングで使う（毎回は使わない）。
+- 相手の名前：${nameRef}。自然なタイミングで使う（毎回は使わない）。
 - 丁寧だが堅すぎず、伴走者として自然なトーンで話す。
 
-## 会話の進め方（4つのフェーズ）
-### PHASE 1｜現状把握（最初の2〜3往復）
-- 事実ベースで状況を確認する。数字・期間・具体的な出来事を引き出す。
-- teamテーマ以外では市場・競合の把握状況も確認する。
+## 会話のフェーズ設計
+### PHASE1｜現状把握（2〜3往復）
+事実・数字・期間を引き出す。teamテーマ以外では市場・競合の把握状況も確認。
 
-### PHASE 2｜課題と原因の深掘り
-- 「なぜそうなっているか」を一緒に掘り下げる。
-- 表面的な答えで止まらせない。「それが起きている本当の理由は何だと思いますか？」と問い返す。
-- ソクラテス式（なぜ？を繰り返す）とコーチング式（状況→課題→原因の段階整理）を状況に応じて使い分ける。
+### PHASE2｜課題と原因の深掘り
+「なぜそうなっているか」を掘り下げる。表面的な答えで止まらせない。
+ソクラテス式（なぜ？）とコーチング式（状況→課題→原因）を使い分ける。
 
-### PHASE 3｜解決策と根拠を引き出す
-- 「では何ができると思いますか？」「なぜそれが効くと思いますか？」と相手に語らせる。
-${!isTeam ? `- 競合との比較・市場でのポジショニングの観点も忘れずに引き出す。
-- USPは「駐車場100%」などのスペック訴求ではなく、エリア・タイミング固有の「なぜうちで買うのか」の根拠まで深める。` : ""}
+### PHASE3｜解決策と根拠を引き出す
+「では何ができると思いますか？」「なぜそれが効くと思いますか？」と相手に語らせる。
+${!isTeam ? "競合との比較・市場ポジショニングの観点も引き出す。USPはスペック訴求ではなくエリア・タイミング固有の根拠まで深める。" : ""}
 
-### PHASE 4｜収束・整理への誘導
-以下のいずれかの状況になったら、自分から整理を提案する：
-- 課題・原因・解決策がある程度出揃ったと判断したとき
-- 相手が自分の答えを宣言したとき
-- 会話が十分に深まり、核心に触れたと感じたとき
+### PHASE4｜収束・整理への誘導
+課題・原因・解決策が出揃ったと判断したら自分から整理を提案する：
+「ここまでの話を聞いていると、〇〇という核心が見えてきました。一度ここで考えを整理してみますか？」
 
-提案の仕方：「ここまでの話を聞いていると、〇〇という核心が見えてきました。一度ここで考えを整理してみますか？」
+## 示唆のルール
+以下の状況ではヒントを与えてよい（ただし問いかけの形で。答えは出さない）：
+- 本質からずれている → 「少し視点を変えると、〇〇という側面はどうでしょう？」
+- 同じところをぐるぐる → 「別の角度から見ると…」と切り口を変える
+- 詰まっている → 選択肢を2〜3個提示
+- 重要な観点の見落とし → 「ちなみに〇〇の点はどう見ていますか？」
 
-## 示唆のルール（重要）
-以下の状況では、答えは出さずに「さりげないヒント」を与えてよい：
-
-| 状況 | 対応 |
-|---|---|
-| 本質からずれた方向に向かっている | 「少し視点を変えると、〇〇という側面はどうでしょう？」と軌道修正 |
-| 同じところをぐるぐる回っている | 「別の角度から見ると…」と切り口を変える |
-| 返答に詰まっている | 選択肢を2〜3個提示（答えではなく視点の切り口として） |
-| 表面的な答えで止まっている | 「それはなぜだと思いますか？」でもう一段深掘り |
-| 重要な観点を見落としている | 「ちなみに〇〇の点はどう見ていますか？」と問いで気づかせる |
-
-示唆はあくまで「問いかけ」の形で行う。断定・アドバイス・答えの提示はしない。
-
-${hasDoc ? `## 参照資料（物件・市場情報）
-${doc}
-資料と相手の認識に乖離があれば、問いかけで気づきを促す。` : "## 参照資料\nなし。対話の中から情報を引き出す。"}
+${docText ? `## 物件・市場参照資料
+以下の資料を把握した上で対話する。相手の認識と乖離があれば問いかけで気づきを促す。
+---
+${docText}
+---` : "## 参照資料\nなし。対話の中から情報を引き出す。"}
 
 ## 今日のテーマ
-カテゴリ：${cat?.label}　／　具体テーマ：${sub?.label}
+${cat?.label} ／ ${sub?.label}
 
 ## セッション開始
-${callName ? `「${callName}、今日は〈${sub?.label}〉について一緒に考えていきましょう。」` : `「今日は〈${sub?.label}〉について一緒に考えていきましょう。」`}と一言添えてから、PHASE1の現状把握の問いを1つだけ投げる。`;
+${callName ? `「${callName}、今日は〈${sub?.label}〉について一緒に考えていきましょう。」` : `「今日は〈${sub?.label}〉について一緒に考えていきましょう。」`}と添えてから、PHASE1の現状把握の問いを1つだけ投げる。`;
 };
 
-const GEMINI_URL = (key) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
-
-const callGemini = async (apiKey, systemPrompt, messages, jsonMode = false) => {
-  const contents = messages.map(m => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }));
-  const body = {
-    system_instruction: { parts: [{ text: systemPrompt }] },
-    contents,
-    generationConfig: {
-      maxOutputTokens: jsonMode ? 1200 : 600,
-      temperature: jsonMode ? 0.1 : 0.7,
-      ...(jsonMode ? { responseMimeType: "application/json" } : {}),
-    },
-  };
-  const res = await fetch(GEMINI_URL(apiKey), {
+// ── GAS API呼び出し ──
+const gasCall = async (action, params) => {
+  const res = await fetch(GAS_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ action, ...params }),
   });
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "応答を取得できませんでした。";
+  if (!data.ok) throw new Error(data.error || "GASエラー");
+  return data;
 };
 
-const extractJSON = (text) => {
-  // Markdownコードブロックを除去してからパース
-  const cleaned = text
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```\s*$/i, "")
-    .trim();
-  // 直接パース試行
-  try { return JSON.parse(cleaned); } catch {}
-  // { } の範囲を探してパース
-  const m = cleaned.match(/(\{[\s\S]*\})/);
-  if (m) { try { return JSON.parse(m[1]); } catch {} }
-  return null;
-};
-
-const RichText = ({ text, color }) => (
-  <div style={{ fontSize:"14px", lineHeight:"1.85", color: color || T.text }}>
+// ── UIコンポーネント ──
+const RichText = ({ text }) => (
+  <div style={{ fontSize:"14px", lineHeight:"1.85", color:T.text }}>
     {text.split("\n").map((line, i) => {
       if (!line.trim()) return <div key={i} style={{ height:"5px" }} />;
       const parts = line.split(/(\*\*.*?\*\*)/);
@@ -181,7 +137,7 @@ const RichText = ({ text, color }) => (
         <p key={i} style={{ margin:"2px 0" }}>
           {parts.map((p, j) =>
             p.startsWith("**")
-              ? <strong key={j} style={{ color: T.gold, fontWeight:"600" }}>{p.replace(/\*\*/g,"")}</strong>
+              ? <strong key={j} style={{ color:T.gold, fontWeight:"600" }}>{p.replace(/\*\*/g,"")}</strong>
               : p
           )}
         </p>
@@ -212,11 +168,9 @@ const Logo = () => (
 );
 
 const Page = ({ children, scrollable }) => (
-  <div style={{
-    minHeight:"100dvh", background:T.bg,
-    display:"flex", alignItems: scrollable ? "flex-start" : "center", justifyContent:"center",
-    padding:"32px 20px", overflowY: scrollable ? "auto" : "visible",
-  }}>
+  <div style={{ minHeight:"100dvh", background:T.bg, display:"flex",
+    alignItems: scrollable ? "flex-start" : "center", justifyContent:"center",
+    padding:"32px 20px", overflowY: scrollable ? "auto" : "visible" }}>
     {children}
   </div>
 );
@@ -238,140 +192,168 @@ const GhostBtn = ({ children, onClick, style }) => (
   <button onClick={onClick} style={{
     padding:"12px 18px", background:"transparent",
     border:`1px solid ${T.border}`, borderRadius:"8px",
-    color:T.textSub, fontSize:"13px", cursor:"pointer",
-    ...(style || {})
+    color:T.textSub, fontSize:"13px", cursor:"pointer", ...(style||{})
   }}>{children}</button>
 );
 
+const ErrorBox = ({ msg }) => msg ? (
+  <div style={{ background:"#fff5f5", border:"1px solid #f0b0b0", borderRadius:"8px",
+    padding:"10px 14px", color:"#c0392b", fontSize:"13px", marginBottom:"14px" }}>
+    ⚠️ {msg}
+  </div>
+) : null;
+
+// ── メインApp ──
 function App() {
-  const [phase, setPhase] = useState("key");
-  const [apiKey, setApiKey] = useState("");
+  const [phase, setPhase] = useState("setup"); // setup|name|theme|doc|loading|chat|summary
+  const [gasUrl,   setGasUrl]   = useState(GAS_URL);
   const [userName, setUserName] = useState("");
+  const [propCode, setPropCode] = useState("");
+  const [propName, setPropName] = useState("");
+  const [folderId, setFolderId] = useState("");
+  const [docText,  setDocText]  = useState("");
   const [cat, setCat] = useState(null);
   const [sub, setSub] = useState(null);
-  const [doc, setDoc] = useState("");
-  const [msgs, setMsgs] = useState([]);
+  const [msgs,  setMsgs]  = useState([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [summary, setSummary] = useState(null);
+  const [loading,      setLoading]      = useState(false);
   const [awaitConfirm, setAwaitConfirm] = useState(false);
-  const [error, setError] = useState("");
+  const [summary, setSummary] = useState(null);
+  const [error,   setError]   = useState("");
+  const [sessionId, setSessionId] = useState("");
   const bottomRef = useRef(null);
-  const inputRef = useRef(null);
+  const inputRef  = useRef(null);
 
   useEffect(() => {
-    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior:"smooth" });
+    bottomRef.current?.scrollIntoView({ behavior:"smooth" });
   }, [msgs, loading]);
 
-  const system = buildSystem(cat, sub, doc, userName);
+  const system = buildSystem(cat, sub, docText, userName);
 
+  // セッションID生成
+  const genSessionId = () => {
+    const d = new Date();
+    const pad = n => String(n).padStart(2,"0");
+    return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}_${sub?.label||""}`;
+  };
+
+  // 物件フォルダ読み取り
+  const loadPropertyDoc = async () => {
+    if (!propCode.trim()) { setPhase("theme"); return; }
+    setLoading(true); setError("");
+    try {
+      const res = await gasCall("getPropertyDoc", { propertyCode: propCode.trim() });
+      setPropName(res.propertyName);
+      setFolderId(res.folderId);
+      setDocText(res.docText);
+    } catch(e) {
+      setError(`物件フォルダの読み取りに失敗しました：${e.message}`);
+      setDocText("");
+    }
+    setLoading(false);
+    setPhase("theme");
+  };
+
+  // セッション開始
   const startSession = async () => {
+    const sid = genSessionId();
+    setSessionId(sid);
     setPhase("chat"); setLoading(true); setError("");
     try {
-      const reply = await callGemini(apiKey, system, [{ role:"user", content:"セッションを開始してください。" }]);
-      setMsgs([{ role:"assistant", content:reply }]);
+      const res = await gasCall("chat", {
+        messages: [{ role:"user", content:"セッションを開始してください。" }],
+        systemPrompt: system,
+        folderId, sessionId: sid,
+      });
+      setMsgs([{ role:"assistant", content:res.reply }]);
     } catch(e) {
-      setError("APIキーを確認してください：" + e.message);
-      setPhase("key");
+      setError("セッション開始に失敗しました：" + e.message);
+      setPhase("doc");
     }
     setLoading(false);
   };
 
+  // メッセージ送信
   const send = async (text) => {
     if (!text.trim() || loading) return;
     const next = [...msgs, { role:"user", content:text }];
     setMsgs(next); setInput(""); setLoading(true); setAwaitConfirm(false);
     try {
-      const reply = await callGemini(apiKey, system, next);
+      const res = await gasCall("chat", {
+        messages: next,
+        systemPrompt: system,
+        folderId, sessionId,
+      });
+      const reply = res.reply;
       const isConfirm = ["整理してみますか","まとめてみますか","振り返ってみますか"].some(p => reply.includes(p));
       setMsgs([...next, { role:"assistant", content:reply }]);
       if (isConfirm) setAwaitConfirm(true);
     } catch(e) {
-      setMsgs([...next, { role:"assistant", content:"エラーが発生しました。もう一度お試しください。" }]);
+      // エラーでも会話ログは既にGASで保存済み
+      setMsgs([...next, { role:"assistant", content:`⚠️ 通信エラーが発生しました。これまでの会話はDriveに自動保存されています。\n（${e.message}）` }]);
     }
     setLoading(false);
   };
 
+  // 整理出力
   const doSummary = async () => {
     setAwaitConfirm(false); setLoading(true);
-
-    // 整理専用のシステムプロンプト（JSONのみ返すよう厳命）
-    const summarySystem = `あなたは会話の内容を構造化JSONに変換する専門エージェントです。
-以下の会話から情報を抽出し、必ずこのJSON形式のみで返してください。
-前後に説明文・コードブロック記号(\`\`\`)・改行は一切含めないこと。
-{"type":"summary","data":{"situation":"現状の説明","issues":["課題1","課題2"],"causes":["原因1","原因2"],"solutions":["解決策1","解決策2"],"rationale":"なぜその解決策で解決できるかの根拠","positioning":"${cat?.id === "team" ? "" : "市場での競合優位ポジショニング・USP"}","ai_comment":"会話全体を通じてAIが感じた本質的な視点・見落とし・次のステップへの示唆を1〜3文で。相手の答えを否定せず補完する形で。ずれや不足があれば軌道修正のヒントを含める。"}}
-teamテーマの場合positioningは空文字。ai_commentは必ず記入すること。各フィールドは会話から読み取れる範囲で埋めること。`;
-
-    const conversationText = msgs.map(m =>
-      (m.role === "assistant" ? "AI: " : "ユーザー: ") + m.content
-    ).join("\n");
-
     try {
-      const reply = await callGemini(
-        apiKey,
-        summarySystem,
-        [{ role:"user", content:`以下の会話を整理してJSONで返してください。\n\n${conversationText}` }],
-        true  // jsonMode ON
-      );
-      const parsed = extractJSON(reply);
-      if (parsed?.type === "summary") {
-        setSummary(parsed.data);
-        setPhase("summary");
-      } else {
-        // パース失敗時は再度通常モードで試みる
-        const retry = await callGemini(
-          apiKey,
-          summarySystem,
-          [{ role:"user", content:`以下の会話を整理してJSONで返してください。\n\n${conversationText}` }],
-          false
-        );
-        const parsed2 = extractJSON(retry);
-        if (parsed2?.type === "summary") {
-          setSummary(parsed2.data);
-          setPhase("summary");
-        } else {
-          setMsgs(prev => [...prev, { role:"assistant", content:"整理の生成に失敗しました。もう一度「整理してください」とお伝えください。" }]);
-        }
-      }
+      const res = await gasCall("saveSummary", {
+        messages: msgs,
+        folderId, sessionId,
+        categoryId:    cat?.id,
+        categoryLabel: cat?.label,
+        subLabel:      sub?.label,
+        userName,
+      });
+      setSummary(res.summary);
+      setPhase("summary");
     } catch(e) {
-      setMsgs(prev => [...prev, { role:"assistant", content:"エラーが発生しました：" + e.message }]);
+      setMsgs(prev => [...prev, {
+        role:"assistant",
+        content:`⚠️ 整理の生成に失敗しました。もう一度「整理してください」とお伝えください。\n（${e.message}）`
+      }]);
     }
     setLoading(false);
   };
 
   const reset = () => {
-    setPhase("name"); setCat(null); setSub(null); setDoc("");
-    setMsgs([]); setInput(""); setSummary(null); setAwaitConfirm(false);
+    setPhase("name"); setCat(null); setSub(null);
+    setDocText(""); setPropCode(""); setPropName(""); setFolderId("");
+    setMsgs([]); setInput(""); setSummary(null);
+    setAwaitConfirm(false); setError(""); setSessionId("");
   };
 
-  /* ── APIキー ── */
-  if (phase === "key") return (
+  // ── SETUP（GAS URL確認）──
+  if (phase === "setup") return (
     <Page>
-      <div style={{ maxWidth:"420px", width:"100%" }}>
+      <div style={{ maxWidth:"440px", width:"100%" }}>
         <Logo />
-        <h1 style={{ color:T.text, fontSize:"24px", fontWeight:"300", lineHeight:"1.5", margin:"0 0 10px" }}>
-          API キーを入力
+        <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"8px" }}>SETUP</p>
+        <h1 style={{ color:T.text, fontSize:"22px", fontWeight:"300", lineHeight:"1.5", margin:"0 0 10px" }}>
+          GAS エンドポイントの確認
         </h1>
-        <p style={{ color:T.textSub, fontSize:"13px", lineHeight:"1.8", margin:"0 0 24px" }}>
-          Google AI Studio のAPIキーを入力してください。<br />キーはこのセッション内のみ保持されます。
+        <p style={{ color:T.textSub, fontSize:"13px", lineHeight:"1.8", margin:"0 0 4px" }}>
+          GASをデプロイしたURLを貼り付けてください。<br />
+          <span style={{ color:T.textMuted }}>（初回設定後はこの画面はスキップできます）</span>
         </p>
-        {error && <div style={{ background:"rgba(180,60,60,0.15)", border:"1px solid rgba(180,60,60,0.4)", borderRadius:"8px", padding:"10px 14px", color:"#f87171", fontSize:"12px", marginBottom:"16px" }}>{error}</div>}
         <GoldDivider />
         <input
-          type="password"
-          value={apiKey}
-          onChange={e => setApiKey(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter" && apiKey.trim()) setPhase("name"); }}
-          placeholder="AIzaSy..."
-          style={{ width:"100%", padding:"14px 16px", background:T.surface, border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text, fontSize:"14px", outline:"none", fontFamily:"monospace", marginBottom:"16px" }}
-          autoComplete="off"
+          type="text"
+          value={gasUrl}
+          onChange={e => setGasUrl(e.target.value)}
+          placeholder="https://script.google.com/macros/s/.../exec"
+          style={{ width:"100%", padding:"12px 14px", background:T.surface,
+            border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text,
+            fontSize:"12px", outline:"none", marginBottom:"16px", fontFamily:"monospace" }}
         />
-        <GoldBtn disabled={!apiKey.trim()} onClick={() => setPhase("name")}>次へ　→</GoldBtn>
+        <GoldBtn disabled={!gasUrl.trim()} onClick={() => setPhase("name")}>次へ　→</GoldBtn>
       </div>
     </Page>
   );
 
-  /* ── 名前入力 ── */
+  // ── 名前入力 ──
   if (phase === "name") return (
     <Page>
       <div style={{ maxWidth:"420px", width:"100%" }}>
@@ -385,28 +367,79 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
         </p>
         <GoldDivider />
         <input
-          type="text"
-          value={userName}
+          type="text" value={userName}
           onChange={e => setUserName(e.target.value)}
-          onKeyDown={e => { if (e.key === "Enter" && userName.trim()) setPhase("theme"); }}
+          onKeyDown={e => { if (e.key==="Enter" && userName.trim()) setPhase("prop"); }}
           placeholder="例：田中"
-          style={{ width:"100%", padding:"14px 16px", background:T.surface, border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text, fontSize:"16px", outline:"none", marginBottom:"16px" }}
+          style={{ width:"100%", padding:"14px 16px", background:T.surface,
+            border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text,
+            fontSize:"16px", outline:"none", marginBottom:"16px" }}
           autoFocus
         />
-        <GoldBtn disabled={!userName.trim()} onClick={() => setPhase("theme")}>次へ　→</GoldBtn>
-        <button onClick={() => { setUserName(""); setPhase("theme"); }}
-          style={{ width:"100%", marginTop:"10px", padding:"12px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textMuted, fontSize:"13px", cursor:"pointer" }}>
+        <GoldBtn disabled={!userName.trim()} onClick={() => setPhase("prop")}>次へ　→</GoldBtn>
+        <button onClick={() => { setUserName(""); setPhase("prop"); }}
+          style={{ width:"100%", marginTop:"10px", padding:"12px", background:"transparent",
+            border:`1px solid ${T.border}`, borderRadius:"8px",
+            color:T.textMuted, fontSize:"13px", cursor:"pointer" }}>
           名前を入力せずに進む
         </button>
       </div>
     </Page>
   );
 
-  /* ── テーマ選択 ── */
+  // ── 物件コード入力 ──
+  if (phase === "prop") return (
+    <Page>
+      <div style={{ maxWidth:"420px", width:"100%" }}>
+        <Logo />
+        <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"8px" }}>PROPERTY</p>
+        <h1 style={{ color:T.text, fontSize:"22px", fontWeight:"300", lineHeight:"1.5", margin:"0 0 10px" }}>
+          物件コードを入力
+        </h1>
+        <p style={{ color:T.textSub, fontSize:"13px", lineHeight:"1.8", margin:"0 0 4px" }}>
+          6桁の物件コードを入力してください。<br />
+          DriveのフォルダからUSP資料・競合情報を自動で読み込みます。
+          <br /><span style={{ color:T.textMuted }}>※ スキップするとテーマ選択のみで進みます</span>
+        </p>
+        <ErrorBox msg={error} />
+        <GoldDivider />
+        <input
+          type="text" value={propCode}
+          onChange={e => setPropCode(e.target.value)}
+          onKeyDown={e => { if (e.key==="Enter") loadPropertyDoc(); }}
+          placeholder="例：012345"
+          maxLength={6}
+          style={{ width:"100%", padding:"14px 16px", background:T.surface,
+            border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text,
+            fontSize:"20px", outline:"none", marginBottom:"16px",
+            letterSpacing:"0.3em", textAlign:"center", fontWeight:"600" }}
+          autoFocus
+        />
+        <GoldBtn onClick={loadPropertyDoc}>
+          {loading ? "読み込み中..." : "物件情報を読み込む　→"}
+        </GoldBtn>
+        <button onClick={() => { setPropCode(""); setPhase("theme"); }}
+          style={{ width:"100%", marginTop:"10px", padding:"12px", background:"transparent",
+            border:`1px solid ${T.border}`, borderRadius:"8px",
+            color:T.textMuted, fontSize:"13px", cursor:"pointer" }}>
+          スキップしてテーマ選択へ
+        </button>
+      </div>
+    </Page>
+  );
+
+  // ── テーマ選択 ──
   if (phase === "theme") return (
     <Page scrollable={true}>
       <div style={{ maxWidth:"560px", width:"100%", paddingTop:"8px" }}>
         <Logo />
+        {propName && (
+          <div style={{ background:T.goldGlow, border:`1px solid ${T.border}`, borderRadius:"8px",
+            padding:"10px 14px", marginBottom:"16px", display:"flex", alignItems:"center", gap:"8px" }}>
+            <span style={{ color:T.gold, fontSize:"12px" }}>◆</span>
+            <span style={{ color:T.textSub, fontSize:"13px" }}>{propName}</span>
+          </div>
+        )}
         <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"8px" }}>THINK TOGETHER</p>
         <h1 style={{ color:T.text, fontSize:"24px", fontWeight:"300", lineHeight:"1.5", margin:"0 0 4px" }}>
           {userName.trim() ? `${userName.trim()}さん、` : ""}今日は何について<br />考えますか？
@@ -415,38 +448,36 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px", marginBottom:"8px" }}>
           {CATEGORIES.map(c => (
             <button key={c.id} onClick={() => { setCat(c); setSub(null); }} style={{
-              background: cat?.id === c.id ? T.goldGlow : T.surface,
-              border: `1px solid ${cat?.id === c.id ? T.goldDim : T.border}`,
+              background: cat?.id===c.id ? T.goldGlow : T.surface,
+              border:`1px solid ${cat?.id===c.id ? T.goldDim : T.border}`,
               borderRadius:"10px", padding:"18px 14px", cursor:"pointer",
               display:"flex", flexDirection:"column", alignItems:"center", gap:"10px",
             }}>
-              <div style={{
-                width:"38px", height:"38px", borderRadius:"50%",
-                background: cat?.id === c.id ? T.gold : T.surfaceHi,
+              <div style={{ width:"38px", height:"38px", borderRadius:"50%",
+                background: cat?.id===c.id ? T.gold : T.surfaceHi,
                 display:"flex", alignItems:"center", justifyContent:"center",
-                color: cat?.id === c.id ? "#16161a" : T.textSub,
-                fontSize:"12px", fontWeight:"700", letterSpacing:"0.05em",
-              }}>{c.icon}</div>
-              <span style={{ fontSize:"13px", fontWeight:"600", color: cat?.id === c.id ? T.gold : T.text }}>{c.label}</span>
+                color: cat?.id===c.id ? "#fff" : T.textSub,
+                fontSize:"12px", fontWeight:"700", letterSpacing:"0.05em" }}>{c.icon}</div>
+              <span style={{ fontSize:"13px", fontWeight:"600",
+                color: cat?.id===c.id ? T.goldDim : T.text }}>{c.label}</span>
             </button>
           ))}
         </div>
-
         {cat && (
           <div style={{ animation:"fadeIn 0.2s ease" }}>
             <GoldDivider />
             <p style={{ color:T.textSub, fontSize:"13px", marginBottom:"14px" }}>具体的なテーマを選んでください</p>
             <div style={{ display:"flex", flexDirection:"column", gap:"8px", marginBottom:"24px" }}>
               {cat.sub.map(s => (
-                <button key={s.id} onClick={() => setSub(s.id === sub?.id ? null : s)} style={{
-                  background: sub?.id === s.id ? T.goldGlow : T.surface,
-                  border: `1px solid ${sub?.id === s.id ? T.goldDim : T.borderSub}`,
+                <button key={s.id} onClick={() => setSub(s.id===sub?.id ? null : s)} style={{
+                  background: sub?.id===s.id ? T.goldGlow : T.surface,
+                  border:`1px solid ${sub?.id===s.id ? T.goldDim : T.borderSub}`,
                   borderRadius:"8px", padding:"14px 16px", cursor:"pointer",
-                  textAlign:"left", color: sub?.id === s.id ? T.text : T.textSub,
+                  textAlign:"left", color: sub?.id===s.id ? T.text : T.textSub,
                   fontSize:"14px", display:"flex", alignItems:"center", gap:"10px",
                 }}>
-                  <span style={{ color: sub?.id === s.id ? T.gold : T.textMuted, fontSize:"10px" }}>
-                    {sub?.id === s.id ? "◆" : "◇"}
+                  <span style={{ color: sub?.id===s.id ? T.gold : T.textMuted, fontSize:"10px" }}>
+                    {sub?.id===s.id ? "◆" : "◇"}
                   </span>
                   {s.label}
                 </button>
@@ -454,67 +485,49 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
             </div>
           </div>
         )}
-        {sub && <GoldBtn onClick={() => setPhase("doc")}>次へ　→</GoldBtn>}
+        {sub && <GoldBtn onClick={startSession}>セッションを開始する　→</GoldBtn>}
       </div>
     </Page>
   );
 
-  /* ── 資料入力 ── */
-  if (phase === "doc") return (
-    <Page scrollable={true}>
-      <div style={{ maxWidth:"560px", width:"100%", paddingTop:"8px" }}>
-        <Logo />
-        <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"8px" }}>PROPERTY DATA</p>
-        <h1 style={{ color:T.text, fontSize:"22px", fontWeight:"300", lineHeight:"1.5", margin:"0 0 10px" }}>
-          物件・市場資料の貼り付け
-        </h1>
-        <p style={{ color:T.textSub, fontSize:"13px", lineHeight:"1.8", margin:"0 0 4px" }}>
-          競合調査・媒体実績・物件情報などを貼り付けると精度の高い対話が可能になります。
-          <br /><span style={{ color:T.textMuted }}>※ スキップも可能です</span>
-        </p>
-        <GoldDivider />
-        <textarea
-          value={doc}
-          onChange={e => setDoc(e.target.value)}
-          placeholder={"■競合物件\n・○○レジデンス：3LDK 4,500万〜、駅徒歩5分、残15戸\n・△△マンション：3LDK 4,200万〜、完売\n\n■自物件\n・□□ザレジデンス：3LDK 4,800万〜、駅徒歩3分、残32戸\n・月間来場：12組、契約：2件"}
-          style={{ width:"100%", minHeight:"180px", padding:"14px 16px", background:T.surface, border:`1px solid ${T.border}`, borderRadius:"8px", color:T.text, fontSize:"13px", lineHeight:"1.75", resize:"vertical", outline:"none", marginBottom:"16px" }}
-        />
-        <div style={{ display:"flex", gap:"10px" }}>
-          <GhostBtn onClick={() => setPhase("theme")}>← 戻る</GhostBtn>
-          <GoldBtn onClick={startSession} style={{ flex:1 }}>
-            {doc.trim() ? "資料を渡して開始　→" : "資料なしで開始　→"}
-          </GoldBtn>
-        </div>
-      </div>
-    </Page>
-  );
-
-  /* ── チャット ── */
+  // ── チャット ──
   if (phase === "chat") return (
     <div style={{ height:"100dvh", display:"flex", flexDirection:"column", background:T.bg }}>
-      {/* ヘッダー */}
-      <div style={{ background:T.surface, borderBottom:`1px solid ${T.border}`, padding:"12px 16px", display:"flex", alignItems:"center", gap:"12px", flexShrink:0, boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
-        <button onClick={reset} style={{ background:"transparent", border:`1px solid ${T.border}`, borderRadius:"6px", padding:"6px 12px", color:T.textSub, fontSize:"12px", cursor:"pointer", flexShrink:0 }}>
+      <div style={{ background:T.surface, borderBottom:`1px solid ${T.border}`,
+        padding:"12px 16px", display:"flex", alignItems:"center", gap:"12px",
+        flexShrink:0, boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
+        <button onClick={reset} style={{ background:"transparent", border:`1px solid ${T.border}`,
+          borderRadius:"6px", padding:"6px 12px", color:T.textSub, fontSize:"12px", cursor:"pointer" }}>
           終了
         </button>
         <div style={{ flex:1, textAlign:"center" }}>
-          <div style={{ color:T.goldDim, fontSize:"10px", letterSpacing:"0.15em", marginBottom:"2px" }}>{cat?.label}</div>
+          <div style={{ color:T.goldDim, fontSize:"10px", letterSpacing:"0.15em", marginBottom:"2px" }}>
+            {propName || cat?.label}
+          </div>
           <div style={{ color:T.text, fontSize:"13px", fontWeight:"600" }}>{sub?.label}</div>
           {userName.trim() && <div style={{ color:T.textMuted, fontSize:"11px", marginTop:"1px" }}>{userName}さん</div>}
         </div>
-        <div style={{ width:"52px" }} />
+        <div style={{ width:"52px", textAlign:"right" }}>
+          {folderId && <span style={{ color:T.gold, fontSize:"10px" }}>●保存中</span>}
+        </div>
       </div>
 
-      {/* メッセージ */}
-      <div style={{ flex:1, overflowY:"auto", padding:"20px 16px", display:"flex", flexDirection:"column", gap:"18px", WebkitOverflowScrolling:"touch", background:"#f5f2ec" }}>
+      <div style={{ flex:1, overflowY:"auto", padding:"20px 16px",
+        display:"flex", flexDirection:"column", gap:"18px",
+        WebkitOverflowScrolling:"touch", background:"#f5f2ec" }}>
         {msgs.map((m, i) => (
-          <div key={i} style={{ display:"flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", gap:"10px", animation:"fadeIn 0.2s ease" }}>
-            {m.role === "assistant" && (
-              <div style={{ width:"32px", height:"32px", borderRadius:"50%", background:`linear-gradient(135deg, ${T.goldDim}, ${T.gold})`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:"2px" }}>
+          <div key={i} style={{ display:"flex",
+            justifyContent: m.role==="user" ? "flex-end" : "flex-start",
+            gap:"10px", animation:"fadeIn 0.2s ease" }}>
+            {m.role==="assistant" && (
+              <div style={{ width:"32px", height:"32px", borderRadius:"50%",
+                background:`linear-gradient(135deg,${T.goldDim},${T.gold})`,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                flexShrink:0, marginTop:"2px" }}>
                 <span style={{ color:"#fff", fontSize:"10px", fontWeight:"700" }}>AI</span>
               </div>
             )}
-            <div style={m.role === "user" ? {
+            <div style={ m.role==="user" ? {
               maxWidth:"82%", background:T.surface, border:`1px solid ${T.border}`,
               borderRadius:"14px 4px 14px 14px", padding:"12px 16px",
               boxShadow:"0 1px 4px rgba(0,0,0,0.06)",
@@ -523,20 +536,28 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
               borderRadius:"2px 12px 12px 2px", padding:"12px 16px",
               boxShadow:"0 1px 4px rgba(0,0,0,0.06)",
             }}>
-              <RichText text={m.content} color={T.text} />
+              <RichText text={m.content} />
             </div>
           </div>
         ))}
 
         {awaitConfirm && !loading && (
-          <div style={{ paddingLeft:"42px", display:"flex", flexDirection:"column", gap:"8px", animation:"fadeIn 0.2s ease" }}>
-            <div style={{ color:T.textMuted, fontSize:"11px", letterSpacing:"0.1em", marginBottom:"2px" }}>— ご選択ください —</div>
+          <div style={{ paddingLeft:"42px", display:"flex", flexDirection:"column",
+            gap:"8px", animation:"fadeIn 0.2s ease" }}>
+            <div style={{ color:T.textMuted, fontSize:"11px", letterSpacing:"0.1em", marginBottom:"2px" }}>
+              — ご選択ください —
+            </div>
             <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-              <button onClick={doSummary} style={{ padding:"10px 16px", background:T.goldGlow, border:`1px solid ${T.gold}`, borderRadius:"8px", color:T.goldDim, fontSize:"13px", fontWeight:"600", cursor:"pointer" }}>
+              <button onClick={doSummary} style={{ padding:"10px 16px",
+                background:T.goldGlow, border:`1px solid ${T.gold}`,
+                borderRadius:"8px", color:T.goldDim, fontSize:"13px",
+                fontWeight:"600", cursor:"pointer" }}>
                 ✦ はい、整理してください
               </button>
               <button onClick={() => { setAwaitConfirm(false); send("まだ話したいことがあります。続けてください。"); }}
-                style={{ padding:"10px 16px", background:"transparent", border:`1px solid ${T.border}`, borderRadius:"8px", color:T.textSub, fontSize:"13px", cursor:"pointer" }}>
+                style={{ padding:"10px 16px", background:"transparent",
+                  border:`1px solid ${T.border}`, borderRadius:"8px",
+                  color:T.textSub, fontSize:"13px", cursor:"pointer" }}>
                 もう少し続ける
               </button>
             </div>
@@ -545,13 +566,18 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
 
         {loading && (
           <div style={{ display:"flex", gap:"10px", alignItems:"flex-start" }}>
-            <div style={{ width:"32px", height:"32px", borderRadius:"50%", background:`linear-gradient(135deg, ${T.goldDim}, ${T.gold})`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+            <div style={{ width:"32px", height:"32px", borderRadius:"50%",
+              background:`linear-gradient(135deg,${T.goldDim},${T.gold})`,
+              display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
               <span style={{ color:"#fff", fontSize:"10px", fontWeight:"700" }}>AI</span>
             </div>
-            <div style={{ background:T.surface, borderLeft:`2px solid ${T.gold}`, borderRadius:"2px 12px 12px 2px", padding:"14px 18px", boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
+            <div style={{ background:T.surface, borderLeft:`2px solid ${T.gold}`,
+              borderRadius:"2px 12px 12px 2px", padding:"14px 18px",
+              boxShadow:"0 1px 4px rgba(0,0,0,0.06)" }}>
               <div style={{ display:"flex", gap:"5px", alignItems:"center" }}>
-                {[0, 0.2, 0.4].map((d, i) => (
-                  <div key={i} style={{ width:"7px", height:"7px", borderRadius:"50%", background:T.gold, animation:`glow 1.2s ease-in-out ${d}s infinite` }} />
+                {[0,0.2,0.4].map((d,i) => (
+                  <div key={i} style={{ width:"7px", height:"7px", borderRadius:"50%",
+                    background:T.gold, animation:`glow 1.2s ease-in-out ${d}s infinite` }} />
                 ))}
               </div>
             </div>
@@ -560,23 +586,27 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
         <div ref={bottomRef} />
       </div>
 
-      {/* 入力エリア */}
-      <div style={{ borderTop:`1px solid ${T.border}`, padding:"12px 16px", background:T.surface, flexShrink:0, boxShadow:"0 -1px 4px rgba(0,0,0,0.04)" }}>
+      <div style={{ borderTop:`1px solid ${T.border}`, padding:"12px 16px",
+        background:T.surface, flexShrink:0, boxShadow:"0 -1px 4px rgba(0,0,0,0.04)" }}>
         <div style={{ display:"flex", gap:"8px", alignItems:"flex-end" }}>
           <textarea
             ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
+            onKeyDown={e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send(input);} }}
             placeholder="考えを入力してください"
-            rows={2}
-            disabled={loading}
-            style={{ flex:1, padding:"12px 14px", background:T.surfaceHi, border:`1px solid ${T.border}`, borderRadius:"10px", color:T.text, fontSize:"14px", resize:"none", outline:"none", lineHeight:"1.6" }}
+            rows={2} disabled={loading}
+            style={{ flex:1, padding:"12px 14px", background:T.surfaceHi,
+              border:`1px solid ${T.border}`, borderRadius:"10px", color:T.text,
+              fontSize:"14px", resize:"none", outline:"none", lineHeight:"1.6" }}
           />
-          <button
-            onClick={() => send(input)}
-            disabled={!input.trim() || loading}
-            style={{ padding:"12px 18px", background: input.trim() && !loading ? `linear-gradient(135deg, ${T.goldDim}, ${T.gold})` : T.surfaceHi, border:"none", borderRadius:"10px", color: input.trim() && !loading ? "#ffffff" : T.textMuted, fontSize:"14px", fontWeight:"700", cursor: input.trim() && !loading ? "pointer" : "not-allowed", flexShrink:0 }}>
+          <button onClick={() => send(input)} disabled={!input.trim()||loading}
+            style={{ padding:"12px 18px",
+              background: input.trim()&&!loading ? `linear-gradient(135deg,${T.goldDim},${T.gold})` : T.surfaceHi,
+              border:"none", borderRadius:"10px",
+              color: input.trim()&&!loading ? "#fff" : T.textMuted,
+              fontSize:"14px", fontWeight:"700",
+              cursor: input.trim()&&!loading ? "pointer" : "not-allowed", flexShrink:0 }}>
             送信
           </button>
         </div>
@@ -584,7 +614,7 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
     </div>
   );
 
-  /* ── サマリー ── */
+  // ── サマリー ──
   if (phase === "summary" && summary) {
     const isTeam = cat?.id === "team";
     const blocks = [
@@ -601,16 +631,23 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
           <p style={{ color:T.goldDim, fontSize:"11px", letterSpacing:"0.2em", marginBottom:"6px" }}>SESSION SUMMARY</p>
           <h1 style={{ color:T.text, fontSize:"20px", fontWeight:"300", margin:"0 0 4px" }}>{sub?.label}</h1>
           <p style={{ color:T.textMuted, fontSize:"12px", marginBottom:"0" }}>
-            {cat?.label}{userName.trim() ? `　／　${userName}さん` : ""}
+            {propName || cat?.label}{userName.trim() ? `　／　${userName}さん` : ""}
           </p>
+          {folderId && (
+            <p style={{ color:T.gold, fontSize:"11px", marginTop:"4px" }}>
+              ✓ Driveに保存されました
+            </p>
+          )}
           <GoldDivider />
 
           {blocks.map(({ key, label, color, bg }) => {
             const val = summary[key];
-            if (!val || (Array.isArray(val) && val.length === 0)) return null;
+            if (!val || (Array.isArray(val) && val.length===0)) return null;
             const items = Array.isArray(val) ? val : [val];
             return (
-              <div key={key} style={{ marginBottom:"14px", background:bg, borderRadius:"10px", padding:"14px 16px", border:`1px solid ${T.borderSub}`, animation:"fadeIn 0.3s ease" }}>
+              <div key={key} style={{ marginBottom:"14px", background:bg,
+                borderRadius:"10px", padding:"14px 16px",
+                border:`1px solid ${T.borderSub}`, animation:"fadeIn 0.3s ease" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"10px" }}>
                   <div style={{ width:"3px", height:"16px", background:color, borderRadius:"2px", flexShrink:0 }} />
                   <span style={{ color, fontSize:"11px", fontWeight:"700", letterSpacing:"0.15em" }}>{label}</span>
@@ -618,7 +655,7 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
                 <div style={{ display:"flex", flexDirection:"column", gap:"6px" }}>
                   {items.map((item, i) => (
                     <div key={i} style={{ display:"flex", gap:"8px", color:T.text, fontSize:"14px", lineHeight:"1.8" }}>
-                      {items.length > 1 && <span style={{ color, flexShrink:0, marginTop:"3px", fontSize:"10px" }}>◆</span>}
+                      {items.length>1 && <span style={{ color, flexShrink:0, marginTop:"3px", fontSize:"10px" }}>◆</span>}
                       <span>{item}</span>
                     </div>
                   ))}
@@ -630,10 +667,14 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
           {!isTeam && summary.positioning && (
             <>
               <GoldDivider />
-              <div style={{ background:`linear-gradient(135deg, #fffbf0, #fdf6e3)`, border:`1.5px solid ${T.gold}`, borderRadius:"10px", padding:"20px", marginBottom:"8px", animation:"fadeIn 0.3s ease" }}>
+              <div style={{ background:"linear-gradient(135deg,#fffbf0,#fdf6e3)",
+                border:`1.5px solid ${T.gold}`, borderRadius:"10px",
+                padding:"20px", marginBottom:"8px", animation:"fadeIn 0.3s ease" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"12px" }}>
                   <span style={{ color:T.gold, fontSize:"14px" }}>✦</span>
-                  <span style={{ color:T.goldDim, fontSize:"11px", fontWeight:"700", letterSpacing:"0.15em" }}>競合優位ポジショニング（USP）</span>
+                  <span style={{ color:T.goldDim, fontSize:"11px", fontWeight:"700", letterSpacing:"0.15em" }}>
+                    競合優位ポジショニング（USP）
+                  </span>
                 </div>
                 <p style={{ color:T.text, fontSize:"14px", lineHeight:"1.9", margin:0, fontWeight:"500" }}>
                   {summary.positioning}
@@ -645,12 +686,17 @@ teamテーマの場合positioningは空文字。ai_commentは必ず記入する�
           {summary.ai_comment && (
             <>
               <GoldDivider />
-              <div style={{ background:"#f8f5ff", border:`1px solid #c4b0e8`, borderRadius:"10px", padding:"20px", marginBottom:"8px", animation:"fadeIn 0.4s ease" }}>
+              <div style={{ background:"#f8f5ff", border:"1px solid #c4b0e8",
+                borderRadius:"10px", padding:"20px", marginBottom:"8px", animation:"fadeIn 0.4s ease" }}>
                 <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"12px" }}>
-                  <div style={{ width:"28px", height:"28px", borderRadius:"50%", background:"#7c5cbf", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  <div style={{ width:"28px", height:"28px", borderRadius:"50%",
+                    background:"#7c5cbf", display:"flex", alignItems:"center",
+                    justifyContent:"center", flexShrink:0 }}>
                     <span style={{ color:"#fff", fontSize:"10px", fontWeight:"700" }}>AI</span>
                   </div>
-                  <span style={{ color:"#5a3fa0", fontSize:"11px", fontWeight:"700", letterSpacing:"0.1em" }}>今日の会話を通じて感じたこと</span>
+                  <span style={{ color:"#5a3fa0", fontSize:"11px", fontWeight:"700", letterSpacing:"0.1em" }}>
+                    今日の会話を通じて感じたこと
+                  </span>
                 </div>
                 <p style={{ color:"#3a2a60", fontSize:"14px", lineHeight:"1.9", margin:0 }}>
                   {summary.ai_comment}
