@@ -112,27 +112,41 @@ const buildSystem = (cat, sub, docText, userName) => {
   return `あなたはマンション新築分譲の販売事務所スタッフの思考を整理する対話エージェントです。
 相手が自分の力で答えにたどり着くことを支援します。答えを与えるのではなく、気づきを引き出す役割です。
 
-## 基本ルール
+## 絶対に守るルール
+- 答えを絶対に出さない。
 - 問いかけは1ターンに1問のみ。
 - 返答は簡潔に。1〜3文を基本とする。
 - 相手の名前：${nameRef}。自然なタイミングで使う（毎回は使わない）。
 - 丁寧だが堅すぎず、伴走者として自然なトーンで話す。
-- 内部的なフェーズ名（PHASE1〜4など）は絶対に発言しない。あくまで自然な会話として進める。
+- 内部的なステップ名は絶対に発言しない。自然な会話として進める。
+- 整理・まとめは自分では出力しない。必ず「一度考えを整理してみますか？」と確認してから終わる。
 
 ## 会話の進め方（内部指針・発言禁止）
-【ステップ1：現状把握】まず事実・数字・期間を引き出す。teamテーマ以外では市場・競合の把握状況も確認。2〜3往復を目安にする。
+【現状把握】まず事実・数字・期間を引き出す。teamテーマ以外では市場・競合の把握状況も確認。2〜3往復を目安にする。
 
-【ステップ2：課題と原因の深掘り】「なぜそうなっているか」を掘り下げる。表面的な答えで止まらせない。ソクラテス式（なぜ？）とコーチング式（状況→課題→原因）を使い分ける。
+【課題と原因の深掘り】「なぜそうなっているか」を掘り下げる。表面的な答えで止まらせない。
 
-【ステップ3：解決策と根拠を引き出す】「では何ができると思いますか？」「なぜそれが効くと思いますか？」と相手に語らせる。${!isTeam ? "競合との比較・市場ポジショニングの観点も引き出す。USPはスペック訴求ではなくエリア・タイミング固有の根拠まで深める。" : ""}
+【解決策と根拠を引き出す】「では何ができると思いますか？」「なぜそれが効くと思いますか？」と相手に語らせる。${!isTeam ? "競合との比較・市場ポジショニングの観点も引き出す。USPはスペック訴求ではなくエリア・タイミング固有の根拠まで深める。" : ""}
 
-【ステップ4：収束・整理への誘導】課題・原因・解決策が出揃ったと判断したら自分から自然に整理を提案する。例：「ここまでの話を聞いていると、〇〇という核心が見えてきました。一度考えを整理してみますか？」
+【収束・整理への誘導】課題・原因・解決策が出揃ったと判断したら「ここまでの話を聞いていると、〇〇という核心が見えてきました。一度ここで考えを整理してみますか？」と確認する。整理の本文は絶対に自分では書かない。
+
+## 詰まったときの選択肢提示（重要）
+相手が以下の状態になったら、必ず選択肢を2〜4個提示して思考をサポートする：
+- 返答が短い・「わかりません」「難しい」など詰まっている
+- 同じ内容を繰り返している
+- 2往復以上答えが出てこない
+
+選択肢の例：
+「少し視点を変えてみましょう。次のどれが近いですか？
+A. 〇〇という観点
+B. △△という観点
+C. □□という観点」
+
+選択肢はあくまで「視点の切り口」であり答えではない。選択肢を選ばせた後、さらに「なぜそう思いましたか？」と深掘りする。
 
 ## 示唆のルール
-以下の状況ではヒントを与えてよい（問いかけの形で。答えは出さない）：
 - 本質からずれている → 「少し視点を変えると、〇〇という側面はどうでしょう？」
 - 同じところをぐるぐる → 「別の角度から見ると…」と切り口を変える
-- 詰まっている → 選択肢を2〜3個提示
 - 重要な観点の見落とし → 「ちなみに〇〇の点はどう見ていますか？」
 
 ${docText ? `## 物件・市場参照資料
@@ -186,23 +200,66 @@ const gasCall = async (action, params, retries = 2) => {
 };
 
 // ── UIコンポーネント ──
-const RichText = ({ text }) => (
-  <div style={{ fontSize:"14px", lineHeight:"1.85", color:T.text }}>
-    {text.split("\n").map((line, i) => {
-      if (!line.trim()) return <div key={i} style={{ height:"5px" }} />;
-      const parts = line.split(/(\*\*.*?\*\*)/);
-      return (
-        <p key={i} style={{ margin:"2px 0" }}>
-          {parts.map((p, j) =>
-            p.startsWith("**")
-              ? <strong key={j} style={{ color:T.gold, fontWeight:"600" }}>{p.replace(/\*\*/g,"")}</strong>
-              : p
-          )}
-        </p>
+const RichText = ({ text }) => {
+  const lines = text.split("\n");
+  const elements = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // 空行
+    if (!line.trim()) { elements.push(<div key={i} style={{ height:"6px" }} />); i++; continue; }
+
+    // 選択肢ブロック（A. B. C. D. で始まる行）
+    if (/^[A-D][.．]/.test(line.trim())) {
+      elements.push(
+        <div key={i} style={{ display:"flex", gap:"10px", alignItems:"flex-start",
+          margin:"4px 0", paddingLeft:"8px" }}>
+          <span style={{ color:T.gold, fontWeight:"700", fontSize:"13px",
+            flexShrink:0, minWidth:"22px" }}>{line.trim()[0]}.</span>
+          <span style={{ fontSize:"14px", color:T.text, lineHeight:"1.8" }}>
+            {renderInline(line.trim().slice(2).trim())}
+          </span>
+        </div>
       );
-    })}
-  </div>
-);
+      i++; continue;
+    }
+
+    // 箇条書き（- ・ * で始まる行）
+    if (/^[-・*]\s/.test(line.trim())) {
+      elements.push(
+        <div key={i} style={{ display:"flex", gap:"8px", alignItems:"flex-start",
+          margin:"3px 0", paddingLeft:"4px" }}>
+          <span style={{ color:T.gold, flexShrink:0, marginTop:"3px", fontSize:"12px" }}>◆</span>
+          <span style={{ fontSize:"14px", color:T.text, lineHeight:"1.8" }}>
+            {renderInline(line.trim().slice(1).trim())}
+          </span>
+        </div>
+      );
+      i++; continue;
+    }
+
+    // 通常行
+    elements.push(
+      <p key={i} style={{ margin:"3px 0", fontSize:"14px", lineHeight:"1.85", color:T.text }}>
+        {renderInline(line)}
+      </p>
+    );
+    i++;
+  }
+  return <div>{elements}</div>;
+};
+
+// インライン装飾（**太字** と ==ハイライト== に対応）
+const renderInline = (text) => {
+  const parts = text.split(/(\*\*.*?\*\*|==.*?==)/);
+  return parts.map((p, j) => {
+    if (p.startsWith("**") && p.endsWith("**"))
+      return <strong key={j} style={{ color:T.goldDim, fontWeight:"700" }}>{p.slice(2,-2)}</strong>;
+    if (p.startsWith("==") && p.endsWith("=="))
+      return <span key={j} style={{ color:"#1a5a8a", fontWeight:"600" }}>{p.slice(2,-2)}</span>;
+    return p;
+  });
+};
 
 const GoldDivider = () => (
   <div style={{ display:"flex", alignItems:"center", gap:"12px", margin:"20px 0" }}>
